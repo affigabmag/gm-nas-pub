@@ -41,12 +41,26 @@ if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
     exit 0
 fi
 
+# No WiFi adapter present (or none NetworkManager can drive) -> nothing to
+# broadcast. Exit cleanly so the unit doesn't fail/loop; it will try again on
+# the next boot in case a WiFi adapter appears. (Handles test benches and any
+# unit whose WiFi isn't AP-capable.)
+if ! nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
+    echo "gm-nas: no WiFi device found — skipping setup AP" >&2
+    exit 0
+fi
+
 # Launch the captive portal AP. wifi-connect blocks until the user submits
-# their home WiFi credentials and the device successfully connects, then exits 0.
-"$WIFI_CONNECT" \
-    --portal-ssid "$PORTAL_SSID" \
-    --portal-passphrase "$PORTAL_PASSPHRASE" \
-    --ui-directory "$UI_DIR"
+# their home WiFi credentials and the device successfully connects.
+# If it can't start the AP (e.g. adapter has no AP mode), don't crash-loop:
+# log and exit 0 so systemd is satisfied and the console stays clean.
+if ! "$WIFI_CONNECT" \
+        --portal-ssid "$PORTAL_SSID" \
+        --portal-passphrase "$PORTAL_PASSPHRASE" \
+        --ui-directory "$UI_DIR"; then
+    echo "gm-nas: wifi-connect could not start the setup AP" >&2
+    exit 0
+fi
 
 # Connected to home WiFi -> record provisioning so we never show the AP again.
 mkdir -p "$(dirname "$FLAG")"

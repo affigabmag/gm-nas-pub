@@ -12,8 +12,8 @@ ExecStart=/usr/local/sbin/firstboot-wifi.sh
 RemainAfterExit=no
 # wifi-connect blocks until the user finishes setup; no timeout.
 TimeoutStartSec=0
-Restart=on-failure
-RestartSec=5
+# NOTE: no Restart= — a failed run (e.g. no AP-capable WiFi adapter) must not
+# loop and flood the console. The wrapper handles missing hardware gracefully.
 
 [Install]
 WantedBy=multi-user.target
