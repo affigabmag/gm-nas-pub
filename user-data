@@ -143,6 +143,14 @@ autoinstall:
     - tar -xzf /tmp/wifi-connect.tar.gz -C /target/usr/local/lib/wifi-connect
     - chmod +x /target/usr/local/lib/wifi-connect/wifi-connect
 
+    # -- Custom captive-portal UI (branded, guided, mobile-first) -----------
+    # Overwrites wifi-connect's default index.html with our own. Served from
+    # --ui-directory (see firstboot-wifi.sh).
+    - mkdir -p /target/usr/local/lib/wifi-connect/ui
+    - >
+      curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/ui/index.html
+      -o /target/usr/local/lib/wifi-connect/ui/index.html
+
     # -- First-boot provisioning unit + wrapper -----------------------------
     # Fetched from this same public seed repo. The wrapper launches the
     # HomeNAS-Setup AP until the user selects their home WiFi, then writes

@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>gm-nas · WiFi Setup</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --fg: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-fg: #04263a;
+      --border: #334155;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: env(safe-area-inset-top, 16px) 16px 32px;
+    }
+    .wrap { width: 100%; max-width: 420px; }
+    header { text-align: center; margin: 28px 0 20px; }
+    .logo {
+      width: 56px; height: 56px; margin: 0 auto 12px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px; font-weight: 700; color: var(--accent-fg);
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 14px; margin: 0; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 18px;
+    }
+    .steps { list-style: none; padding: 0; margin: 0 0 18px; }
+    .steps li {
+      display: flex; gap: 10px; align-items: flex-start;
+      font-size: 14px; color: var(--muted); margin-bottom: 8px;
+    }
+    .steps .n {
+      flex: none; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--accent); color: var(--accent-fg);
+      font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    select, input, button {
+      width: 100%; font-size: 16px; border-radius: 10px;
+      border: 1px solid var(--border); padding: 12px;
+      background: #0b1220; color: var(--fg);
+    }
+    select:focus, input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .row-refresh { display: flex; gap: 8px; align-items: center; }
+    .row-refresh select { flex: 1; }
+    .icon-btn {
+      flex: none; width: 46px; padding: 0; height: 46px;
+      background: #0b1220; cursor: pointer; font-size: 18px;
+    }
+    button.primary {
+      margin-top: 18px; background: var(--accent); color: var(--accent-fg);
+      font-weight: 700; border: none; cursor: pointer; padding: 14px;
+    }
+    button.primary:disabled { opacity: .5; cursor: not-allowed; }
+    .msg { margin-top: 14px; font-size: 14px; text-align: center; min-height: 20px; }
+    .msg.err { color: var(--danger); }
+    .msg.ok { color: var(--ok); }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px; vertical-align: -3px;
+      border: 2px solid var(--muted); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-color-scheme: light) {
+      :root { --bg:#f1f5f9; --card:#ffffff; --fg:#0f172a; --muted:#64748b; --border:#e2e8f0; }
+      select, input, .icon-btn { background:#f8fafc; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">N</div>
+      <h1>Set up your gm-nas</h1>
+      <p class="sub">Connect your device to your home WiFi</p>
+    </header>
+
+    <div class="card">
+      <ol class="steps">
+        <li><span class="n">1</span><span>Pick your home WiFi network below.</span></li>
+        <li><span class="n">2</span><span>Enter that network's password.</span></li>
+        <li><span class="n">3</span><span>Tap Connect — this setup network then turns off.</span></li>
+      </ol>
+
+      <form id="form">
+        <label for="ssid">Home WiFi network</label>
+        <div class="row-refresh">
+          <select id="ssid" name="ssid" required>
+            <option value="" disabled selected>Scanning for networks…</option>
+          </select>
+          <button type="button" id="refresh" class="icon-btn" title="Rescan">↻</button>
+        </div>
+
+        <div id="manualWrap" style="display:none">
+          <label for="manualSsid">Network name</label>
+          <input id="manualSsid" type="text" placeholder="Type the WiFi name" autocapitalize="none" />
+        </div>
+
+        <label for="pass">WiFi password</label>
+        <input id="pass" name="passphrase" type="password" placeholder="Your home WiFi password"
+               autocapitalize="none" autocomplete="off" />
+        <div class="hint">Leave blank only for an open network.</div>
+
+        <button type="submit" id="submit" class="primary">Connect</button>
+      </form>
+
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+
+  <script>
+    var ssidSel   = document.getElementById('ssid');
+    var manualWrap= document.getElementById('manualWrap');
+    var manualSsid= document.getElementById('manualSsid');
+    var passInput = document.getElementById('pass');
+    var form      = document.getElementById('form');
+    var submitBtn = document.getElementById('submit');
+    var refreshBtn= document.getElementById('refresh');
+    var msg       = document.getElementById('msg');
+
+    var MANUAL = '__manual__';
+
+    function setMsg(text, cls) {
+      msg.className = 'msg' + (cls ? ' ' + cls : '');
+      msg.innerHTML = text;
+    }
+
+    // wifi-connect returns /networks as an array; items may be strings
+    // or objects ({ssid: "..."}). Handle both.
+    function ssidOf(item) {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') return item.ssid || item.SSID || '';
+      return '';
+    }
+
+    function loadNetworks() {
+      ssidSel.innerHTML = '<option value="" disabled selected>Scanning for networks…</option>';
+      fetch('/networks')
+        .then(function (r) { return r.json(); })
+        .then(function (list) {
+          var seen = {}, names = [];
+          (list || []).forEach(function (it) {
+            var s = ssidOf(it);
+            if (s && !seen[s]) { seen[s] = 1; names.push(s); }
+          });
+          names.sort(function (a, b) { return a.localeCompare(b); });
+
+          ssidSel.innerHTML = '';
+          var ph = document.createElement('option');
+          ph.value = ''; ph.disabled = true; ph.selected = true;
+          ph.textContent = names.length ? 'Select your network' : 'No networks found — rescan';
+          ssidSel.appendChild(ph);
+
+          names.forEach(function (s) {
+            var o = document.createElement('option');
+            o.value = s; o.textContent = s;
+            ssidSel.appendChild(o);
+          });
+
+          var m = document.createElement('option');
+          m.value = MANUAL; m.textContent = 'Other / hidden network…';
+          ssidSel.appendChild(m);
+        })
+        .catch(function () {
+          setMsg('Could not scan networks. Tap ↻ to retry.', 'err');
+        });
+    }
+
+    ssidSel.addEventListener('change', function () {
+      var manual = ssidSel.value === MANUAL;
+      manualWrap.style.display = manual ? 'block' : 'none';
+      if (manual) manualSsid.focus();
+    });
+
+    refreshBtn.addEventListener('click', function () { setMsg(''); loadNetworks(); });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var ssid = ssidSel.value === MANUAL ? manualSsid.value.trim() : ssidSel.value;
+      if (!ssid) { setMsg('Please choose a network.', 'err'); return; }
+
+      submitBtn.disabled = true;
+      setMsg('<span class="spinner"></span>Connecting to <b>' + ssid + '</b>…', '');
+
+      var body = 'ssid=' + encodeURIComponent(ssid) +
+                 '&passphrase=' + encodeURIComponent(passInput.value);
+
+      fetch('/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body
+      })
+      .then(function () {
+        setMsg('Connecting… your gm-nas is joining <b>' + ssid + '</b>.<br>' +
+               'This WiFi setup network will now switch off. ' +
+               'Reconnect your phone to your home WiFi.', 'ok');
+      })
+      .catch(function () {
+        // The AP often drops the moment the device switches networks, which
+        // can surface as a fetch error even on success — say so gently.
+        setMsg('Setup sent. If this network disappears, that means it worked — ' +
+               'reconnect your phone to your home WiFi.', 'ok');
+      });
+    });
+
+    loadNetworks();
+  </script>
+</body>
+</html>
