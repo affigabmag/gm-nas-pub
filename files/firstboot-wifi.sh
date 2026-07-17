@@ -19,7 +19,7 @@ FLAG=/etc/homenas/provisioned
 # ---- Setup AP credentials (printed on the physical label) ------------------
 # CHANGE THIS before building units, and print it on the label.
 # WPA2 passphrase must be 8-63 characters.
-PORTAL_SSID="HomeNAS-Setup"
+PORTAL_SSID="GMNas-Setup"
 PORTAL_PASSPHRASE="gmnas2026"
 
 UI_DIR="/usr/local/lib/wifi-connect/ui"

@@ -153,7 +153,7 @@ autoinstall:
 
     # -- First-boot provisioning unit + wrapper -----------------------------
     # Fetched from this same public seed repo. The wrapper launches the
-    # HomeNAS-Setup AP until the user selects their home WiFi, then writes
+    # GMNas-Setup AP until the user selects their home WiFi, then writes
     # /etc/homenas/provisioned so it never runs again.
     - >
       curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/files/firstboot-wifi.sh
