@@ -2,7 +2,7 @@
 # ============================================================================
 # gm-nas — Ubuntu Server 24.04 LTS autoinstall seed (user-data)
 # ----------------------------------------------------------------------------
-# Fetched at GRUB via:  autoinstall ds=nocloud-net;s=https://raw.githubusercontent.com/affigabmag/gm-nas/main/
+# Fetched at GRUB via:  autoinstall ds=nocloud-net;s=https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/
 # PUBLIC REPO — no secrets here. SSH public key only. No passwords, no authkeys.
 # ============================================================================
 autoinstall:
@@ -114,13 +114,52 @@ autoinstall:
     - curtin in-target --target=/target -- systemctl enable NetworkManager
     - curtin in-target --target=/target -- systemctl enable avahi-daemon
 
+    # -- Tailscale ----------------------------------------------------------
+    # Official installer adds the apt repo + installs + enables tailscaled.
+    # NO authkey here (authkeys are secrets; public repo). The device is NOT
+    # logged in at build time — Tailscale auth happens later via the welcome
+    # app / `tailscale up` during setup.
+    - curtin in-target --target=/target -- bash -c 'curl -fsSL https://tailscale.com/install.sh | sh'
+    - curtin in-target --target=/target -- systemctl enable tailscaled
+
+    # -- ttyd (browser terminal binary) -------------------------------------
+    # Latest x86_64 static binary from upstream releases. Installed now; its
+    # own systemd service + welcome-app embedding come in a later step.
+    - >
+      curl -fsSL
+      "$(curl -fsSL https://api.github.com/repos/tsl0922/ttyd/releases/latest
+      | grep browser_download_url | grep '\.x86_64' | head -1 | cut -d '"' -f4)"
+      -o /target/usr/local/bin/ttyd
+    - chmod +x /target/usr/local/bin/ttyd
+
+    # -- wifi-connect (first-boot captive portal) ---------------------------
+    # Latest x86_64 linux release tarball (binary + bundled ui/).
+    - >
+      curl -fsSL
+      "$(curl -fsSL https://api.github.com/repos/balena-os/wifi-connect/releases/latest
+      | grep browser_download_url | grep x86_64 | grep -i linux | head -1 | cut -d '"' -f4)"
+      -o /tmp/wifi-connect.tar.gz
+    - mkdir -p /target/usr/local/lib/wifi-connect
+    - tar -xzf /tmp/wifi-connect.tar.gz -C /target/usr/local/lib/wifi-connect
+    - chmod +x /target/usr/local/lib/wifi-connect/wifi-connect
+
+    # -- First-boot provisioning unit + wrapper -----------------------------
+    # Fetched from this same public seed repo. The wrapper launches the
+    # HomeNAS-Setup AP until the user selects their home WiFi, then writes
+    # /etc/homenas/provisioned so it never runs again.
+    - >
+      curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/files/firstboot-wifi.sh
+      -o /target/usr/local/sbin/firstboot-wifi.sh
+    - chmod +x /target/usr/local/sbin/firstboot-wifi.sh
+    - >
+      curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/files/homenas-firstboot.service
+      -o /target/etc/systemd/system/homenas-firstboot.service
+    - curtin in-target --target=/target -- systemctl enable homenas-firstboot.service
+
     # ========================================================================
-    # TODO (later build steps — not Step 1):
-    #   - Install Tailscale (official apt repo) + enable tailscaled
-    #   - Download ttyd binary (github.com/tsl0922/ttyd releases, amd64)
-    #   - Download wifi-connect binary (balena-io/wifi-connect releases)
-    #   - Drop first-boot systemd unit + wrapper (flag check, wifi-connect AP
-    #     "HomeNAS-Setup", write /etc/homenas/provisioned on success)
-    #   - Install welcome app + its systemd unit (owns password-set + shares)
-    #   - Deploy custom wifi-connect --ui-directory HTML/CSS
+    # TODO (later build steps):
+    #   - ttyd systemd service + reverse-proxy/iframe into welcome app
+    #   - Welcome app + its systemd unit (owns password-set flag + shares)
+    #   - Custom wifi-connect --ui-directory HTML/CSS (branding + guided copy)
+    #   - Tailscale auth flow wired into the welcome app
     # ========================================================================

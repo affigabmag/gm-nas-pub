@@ -1,0 +1,19 @@
+[Unit]
+Description=gm-nas first-boot WiFi provisioning (wifi-connect captive portal)
+Documentation=https://github.com/affigabmag/gm-nas
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Skip entirely once the device has been provisioned.
+ConditionPathExists=!/etc/homenas/provisioned
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/firstboot-wifi.sh
+RemainAfterExit=no
+# wifi-connect blocks until the user finishes setup; no timeout.
+TimeoutStartSec=0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
