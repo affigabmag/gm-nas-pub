@@ -1,0 +1,126 @@
+#cloud-config
+# ============================================================================
+# gm-nas — Ubuntu Server 24.04 LTS autoinstall seed (user-data)
+# ----------------------------------------------------------------------------
+# Fetched at GRUB via:  autoinstall ds=nocloud-net;s=https://raw.githubusercontent.com/affigabmag/gm-nas/main/
+# PUBLIC REPO — no secrets here. SSH public key only. No passwords, no authkeys.
+# ============================================================================
+autoinstall:
+  version: 1
+
+  # --- Locale / input -------------------------------------------------------
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  # --- Minimal install ------------------------------------------------------
+  # Skips bundled snaps/packages; smaller attack surface (device is remote-reachable).
+  source:
+    id: ubuntu-server-minimal
+
+  # --- Network --------------------------------------------------------------
+  # Build-time only: Ethernet DHCP. End-user home WiFi is handled later by
+  # wifi-connect (first-boot flow), NOT here. NetworkManager renderer is set
+  # in late-commands (wifi-connect depends on NetworkManager).
+  network:
+    version: 2
+    ethernets:
+      eth-any:
+        match:
+          name: "en*"
+        dhcp4: true
+        optional: true
+
+  # --- Storage --------------------------------------------------------------
+  # p1: ESP 1GB (UEFI boot)   p2: / 40GB ext4   p3: rest -> /srv/storage ext4
+  # NOTE: targets the first disk. Confirm device size >~1TB before imaging so
+  # the installer doesn't pick a USB stick as the target.
+  storage:
+    config:
+      - {type: disk, id: disk0, ptable: gpt, match: {size: largest}, wipe: superblock-recursive, grub_device: true}
+
+      - {type: partition, id: p1, device: disk0, size: 1G, flag: boot, grub_device: true}
+      - {type: format, id: fs-esp, volume: p1, fstype: fat32}
+      - {type: mount, id: mnt-esp, device: fs-esp, path: /boot/efi}
+
+      - {type: partition, id: p2, device: disk0, size: 40G}
+      - {type: format, id: fs-root, volume: p2, fstype: ext4}
+      - {type: mount, id: mnt-root, device: fs-root, path: /}
+
+      - {type: partition, id: p3, device: disk0, size: -1}
+      - {type: format, id: fs-storage, volume: p3, fstype: ext4}
+      - {type: mount, id: mnt-storage, device: fs-storage, path: /srv/storage}
+
+  # --- Identity / user ------------------------------------------------------
+  # Password strategy b1: NO password set here. End user sets the admin password
+  # via the welcome-app web UI on first setup. Until then Cockpit login is locked
+  # (flag /etc/homenas/password-not-set, created in late-commands).
+  identity:
+    hostname: my-gmnas
+    username: gmnas
+    # Locked/disabled password ('!'), no console/Cockpit login until web UI sets one.
+    password: "!"
+
+  # --- SSH ------------------------------------------------------------------
+  # Key-only auth from first boot. Public key below is safe on a public repo.
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys:
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDNqMi/55aCOwG0yO3jbR7uXrc2VNIPuMU2ikxuxuAXreTCPtiTrG5q+rC0gJpMp+TBRi7LPi09nUF680BqJ2DhXPK3J/PNc3+Xrg/HrB7SxT+YluU3gYbKr5cv1N1c31JVduXcxLnuDKVzWs8kUG8PknNAghbHnGfBG1eBhFRbEfu4KJqZNepN/zDGbr7GNkRlNJvk+FFBoavqRo8JfTn9zj6KgJqL1aMNoCDrWmvHzEWMQCfe9wUF+JrFnNmBac39LUgN77Y1K/hgf6jXKHlh4WITjPjTR3DIerUD1uoZDrO9/y5+eJMZAFF94wlt4TM4J32PpNjs1VQzO/mghIoaHg1pvcwdWaLdsl0RqC1HP+TvqBxK4IKf630jHEx6n9TGSreGYA/YQD8QYPF+8ujlpGVswfZL/NR9ZGnIp3v6V7JKvxBdNcwJ/Tjczb2+dQ5L5q15J7nOIQot5lE8aYX5DOVOe9ezK/jjxaI9OLTu/CfLKome20GGMZRPxM+LVsIVPwaRa/zNQ4M2YcNwHkxSWq3babBkpj//dxW9besW89JApnwyA9IS61BoXjv/cKwikI+qx1Vg3RTqyrKau08J+bULJB1L36GGY0nvphbwuj4eTFCLRB6kkoUFXtmFmfPVny7U2uToQnq30xW2Vl09Z/t4jKVeu/9CqnlmUpjLeQ== gm"
+
+  # --- Packages (apt) -------------------------------------------------------
+  # Tailscale + ttyd + wifi-connect are NOT apt packages on 24.04 — installed
+  # in late-commands (repo / GitHub-release binaries).
+  packages:
+    - cockpit
+    - samba
+    - nfs-kernel-server
+    - network-manager
+    - avahi-daemon
+    - curl
+    - ca-certificates
+
+  # Keep the box current on its own (security appliance, unattended).
+  package_update: true
+  package_upgrade: true
+
+  # --- Post-install ---------------------------------------------------------
+  late-commands:
+    # -- NetworkManager as the netplan renderer (wifi-connect requires NM) ---
+    - |
+      cat > /target/etc/netplan/01-network-manager-all.yaml <<'EOF'
+      network:
+        version: 2
+        renderer: NetworkManager
+      EOF
+    - chmod 600 /target/etc/netplan/01-network-manager-all.yaml
+    # Remove the installer's networkd config so NM owns all interfaces
+    - rm -f /target/etc/netplan/00-installer-config*.yaml
+
+    # -- homenas state dir + flags ------------------------------------------
+    # password-not-set : welcome app removes it once admin password is chosen (b1)
+    # provisioned      : ABSENT on purpose -> first boot runs wifi-connect AP flow
+    - mkdir -p /target/etc/homenas
+    - touch /target/etc/homenas/password-not-set
+
+    # -- storage dir ownership ----------------------------------------------
+    - chown root:gmnas /target/srv/storage
+    - chmod 2775 /target/srv/storage
+
+    # -- Enable core services -----------------------------------------------
+    - curtin in-target --target=/target -- systemctl enable ssh
+    - curtin in-target --target=/target -- systemctl enable cockpit.socket
+    - curtin in-target --target=/target -- systemctl enable NetworkManager
+    - curtin in-target --target=/target -- systemctl enable avahi-daemon
+
+    # ========================================================================
+    # TODO (later build steps — not Step 1):
+    #   - Install Tailscale (official apt repo) + enable tailscaled
+    #   - Download ttyd binary (github.com/tsl0922/ttyd releases, amd64)
+    #   - Download wifi-connect binary (balena-io/wifi-connect releases)
+    #   - Drop first-boot systemd unit + wrapper (flag check, wifi-connect AP
+    #     "HomeNAS-Setup", write /etc/homenas/provisioned on success)
+    #   - Install welcome app + its systemd unit (owns password-set + shares)
+    #   - Deploy custom wifi-connect --ui-directory HTML/CSS
+    # ========================================================================
