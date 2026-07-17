@@ -7,11 +7,11 @@ Wants=NetworkManager.service
 ConditionPathExists=!/etc/homenas/provisioned
 
 [Service]
-Type=oneshot
+# Type=simple so it runs in the BACKGROUND: boot continues, the console/SSH
+# come up, and wifi-connect broadcasts the setup AP at the same time. (oneshot
+# blocked the whole boot until setup finished — the box looked frozen.)
+Type=simple
 ExecStart=/usr/local/sbin/firstboot-wifi.sh
-RemainAfterExit=no
-# wifi-connect blocks until the user finishes setup; no timeout.
-TimeoutStartSec=0
 # NOTE: no Restart= — a failed run (e.g. no AP-capable WiFi adapter) must not
 # loop and flood the console. The wrapper handles missing hardware gracefully.
 
