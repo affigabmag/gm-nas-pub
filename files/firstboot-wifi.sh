@@ -62,6 +62,9 @@ if ! "$WIFI_CONNECT" \
     exit 0
 fi
 
-# Connected to home WiFi -> record provisioning so we never show the AP again.
+# Connected to home WiFi -> record provisioning so we never show the AP again,
+# then reboot so the device comes up cleanly on the home network.
 mkdir -p "$(dirname "$FLAG")"
 touch "$FLAG"
+sleep 3
+systemctl reboot

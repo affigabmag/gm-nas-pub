@@ -203,28 +203,45 @@
       var ssid = ssidSel.value === MANUAL ? manualSsid.value.trim() : ssidSel.value;
       if (!ssid) { setMsg('Please choose a network.', 'err'); return; }
 
-      submitBtn.disabled = true;
-      setMsg('<span class="spinner"></span>Connecting to <b>' + ssid + '</b>…', '');
+      var card = document.querySelector('.card');
+      function panel(html) { card.innerHTML = html; }
+
+      // Step 1 — preloader while the device joins the network.
+      panel(
+        '<div style="text-align:center;padding:14px 4px">' +
+          '<div class="spinner" style="width:36px;height:36px;border-width:3px;margin:6px auto 16px"></div>' +
+          '<div style="font-size:16px;font-weight:500;margin-bottom:6px">Connecting to <b>' + ssid + '</b>…</div>' +
+          '<div class="hint">Keep this page open for a moment.</div>' +
+        '</div>'
+      );
 
       var body = 'ssid=' + encodeURIComponent(ssid) +
                  '&passphrase=' + encodeURIComponent(passInput.value);
 
+      // Fire the request. wifi-connect shuts the AP off the instant it succeeds,
+      // so the reply usually never comes back — we don't wait on it.
       fetch('/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body
-      })
-      .then(function () {
-        setMsg('Connecting… your gm-nas is joining <b>' + ssid + '</b>.<br>' +
-               'This WiFi setup network will now switch off. ' +
-               'Reconnect your phone to your home WiFi.', 'ok');
-      })
-      .catch(function () {
-        // The AP often drops the moment the device switches networks, which
-        // can surface as a fetch error even on success — say so gently.
-        setMsg('Setup sent. If this network disappears, that means it worked — ' +
-               'reconnect your phone to your home WiFi.', 'ok');
-      });
+      }).catch(function () {});
+
+      // Step 2 — after a short wait, show the done / next-steps screen.
+      setTimeout(function () {
+        panel(
+          '<div style="text-align:center;padding:8px 4px">' +
+            '<div style="width:54px;height:54px;border-radius:50%;background:var(--ok);color:#04331b;' +
+                 'display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px">✓</div>' +
+            '<div style="font-size:18px;font-weight:500;margin-bottom:10px">Setup complete</div>' +
+            '<div style="color:var(--muted);font-size:14px;line-height:1.7">' +
+              'Your gm-nas is joining <b style="color:var(--fg)">' + ssid + '</b> and will restart automatically.<br><br>' +
+              'The <b style="color:var(--fg)">GMNas-Setup</b> network is switching off now — ' +
+              'reconnect your phone to your <b style="color:var(--fg)">home WiFi</b>.<br><br>' +
+              'In about a minute your gm-nas is ready at <b style="color:var(--fg)">my-gmnas.local</b>.' +
+            '</div>' +
+          '</div>'
+        );
+      }, 6000);
     });
 
     loadNetworks();
