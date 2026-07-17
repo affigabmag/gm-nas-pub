@@ -1,0 +1,15 @@
+[Unit]
+Description=gm-nas browser terminal (ttyd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Browser terminal on :7681. A login prompt is shown (user authenticates as a
+# system user, e.g. gmnas) so the terminal isn't open without credentials.
+ExecStart=/usr/local/bin/ttyd -p 7681 -W login
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

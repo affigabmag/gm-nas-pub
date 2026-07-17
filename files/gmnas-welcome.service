@@ -1,0 +1,13 @@
+[Unit]
+Description=gm-nas welcome app (post-setup web UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/gmnas-welcome/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
