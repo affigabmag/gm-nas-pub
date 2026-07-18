@@ -226,7 +226,8 @@
         body: body
       }).catch(function () {});
 
-      // Step 2 — after a short wait, show the done / next-steps screen.
+      // Step 2 — after a short wait, show the done screen + a 2-minute
+      // restart countdown (the gm-nas reboots and comes up on the new WiFi).
       setTimeout(function () {
         panel(
           '<div style="text-align:center;padding:8px 4px">' +
@@ -234,13 +235,26 @@
                  'display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px">✓</div>' +
             '<div style="font-size:18px;font-weight:500;margin-bottom:10px">Setup complete</div>' +
             '<div style="color:var(--muted);font-size:14px;line-height:1.7">' +
-              'Your gm-nas is joining <b style="color:var(--fg)">' + ssid + '</b> and will restart automatically.<br><br>' +
-              'The <b style="color:var(--fg)">GMNas-Setup</b> network is switching off now — ' +
-              'reconnect your phone to your <b style="color:var(--fg)">home WiFi</b>.<br><br>' +
-              'In about a minute your gm-nas is ready at <b style="color:var(--fg)">my-gmnas.local</b>.' +
+              'Your gm-nas is joining <b style="color:var(--fg)">' + ssid + '</b> and is <b style="color:var(--fg)">restarting now</b>.<br><br>' +
+              'The <b style="color:var(--fg)">GMNas-Setup</b> network switches off — ' +
+              'reconnect your phone to your <b style="color:var(--fg)">home WiFi</b>.<br>' +
+              'Then find your gm-nas at <b style="color:var(--fg)">my-gmnas.local</b>.' +
             '</div>' +
+            '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 2:00</div>' +
           '</div>'
         );
+        var left = 120, el = document.getElementById('cd');
+        var iv = setInterval(function () {
+          left--;
+          if (left <= 0) {
+            clearInterval(iv);
+            el.style.color = 'var(--ok)';
+            el.innerHTML = 'Ready — open <b>my-gmnas.local</b>';
+            return;
+          }
+          var m = Math.floor(left / 60), s = left % 60;
+          el.textContent = 'Restarting… ' + m + ':' + (s < 10 ? '0' : '') + s;
+        }, 1000);
       }, 6000);
     });
 
