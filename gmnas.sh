@@ -24,11 +24,11 @@ while true; do
     cat <<'MENU'
    0) Device info                 (login summary: IP, links, services)
    1) Status / diagnostics        (gm-debug)
+   5) View the setup log
+   i) Install error log           (subiquity debug)
    2) System monitor              (btop)
    3) Connect to a WiFi network   (join-wifi)
    4) First-time WiFi wizard      (broadcast GMNas-Setup, set up from phone)
-   5) View the setup log
-   i) Install error log           (subiquity debug)
    6) Web links (Welcome / Cockpit / Terminal)
    7) Restart web services        (welcome + terminal)
    a) Install ALL components      (Cockpit/Tailscale/Samba/NFS/ttyd/welcome)
