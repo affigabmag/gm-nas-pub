@@ -5,6 +5,8 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
+MENU_VER="01.17.20260718191341"   # bump when this menu changes
+
 H() { hostname 2>/dev/null; }
 IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
 pause() { echo; read -rp "Press Enter to continue…" _; }
@@ -16,6 +18,7 @@ header() {
     echo "=================== gm-nas control menu ==================="
     echo "  Host : $(H).local        IP : $ip"
     echo "  Seed : $(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')"
+    echo "  Menu : v$MENU_VER"
     echo "=========================================================="
 }
 
