@@ -33,7 +33,7 @@ while true; do
    7) Restart web services        (welcome + terminal)
    a) Install ALL components      (Cockpit/Tailscale/Samba/NFS/ttyd/welcome)
    8) Update gm-nas from GitHub   (gm-update, online)
-   m) Mount the Ventoy USB        (at /mnt/ventoy)
+   m) Mount and view files        (mount a USB drive and list its files)
    u) Apply edits from Ventoy USB (offline update, no reinstall)
    9) Open a shell
    r) Reboot          p) Power off          q) Quit
@@ -46,9 +46,28 @@ MENU
         2) btop ;;
         3) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
-           sudo join-wifi "$s" "$p" 2>/dev/null || sudo bash /usr/local/bin/join-wifi "$s" "$p"; pause ;;
-        4) sudo reset-setup 2>/dev/null || sudo bash /usr/local/bin/reset-setup
-           echo; echo "Connect a phone to WiFi 'GMNas-Setup' (password: gmnas2026)"; pause ;;
+           sudo join-wifi "$s" "$p" 2>/dev/null || sudo bash /usr/local/bin/join-wifi "$s" "$p"
+           echo
+           echo "A reboot is required to leave AP mode and connect to '$s'."
+           echo "Reboot now? [y/N]"
+           read -rsn1 yn; echo
+           if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then sudo reboot; else pause; fi ;;
+        4) echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
+           echo "setup mode (you'll lose this network connection). Continue? [y/N]"
+           read -rsn1 yn; echo
+           if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
+             sudo reset-setup 2>/dev/null || sudo bash /usr/local/bin/reset-setup
+             echo
+             echo "  ============ NOW ON YOUR PHONE ============"
+             echo "   1) WiFi:     GMNas-Setup"
+             echo "      Password: gmnas2026"
+             echo "   2) Browser:  http://192.168.42.1"
+             echo "   3) Pick your home WiFi + password, tap Connect"
+             echo
+             echo "   The gm-nas joins it, then reboots on the new WiFi."
+             echo "  =========================================="
+           else echo "cancelled."; fi
+           pause ;;
         5) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
         i|I) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
         6) h="$(H).local"

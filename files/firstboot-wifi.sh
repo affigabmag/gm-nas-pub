@@ -50,21 +50,45 @@ if ! nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
     exit 0
 fi
 
-# Launch the captive portal AP. wifi-connect blocks until the user submits
-# their home WiFi credentials and the device successfully connects.
-# If it can't start the AP (e.g. adapter has no AP mode), don't crash-loop:
-# log and exit 0 so systemd is satisfied and the console stays clean.
-if ! "$WIFI_CONNECT" \
-        --portal-ssid "$PORTAL_SSID" \
-        --portal-passphrase "$PORTAL_PASSPHRASE" \
-        --ui-directory "$UI_DIR"; then
-    echo "gm-nas: wifi-connect could not start the setup AP" >&2
-    exit 0
-fi
+# Snapshot existing WiFi profiles so we can detect the NEW one the user picks.
+wifi_profiles() {
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' | sort
+}
+BEFORE="$(wifi_profiles)"
 
-# Connected to home WiFi -> record provisioning so we never show the AP again,
-# then reboot so the device comes up cleanly on the home network.
-mkdir -p "$(dirname "$FLAG")"
-touch "$FLAG"
-sleep 3
-systemctl reboot
+# Launch the captive portal AP in the background. wifi-connect captures the
+# user's WiFi choice via the portal and creates a NetworkManager profile for
+# it. On this hardware the live AP->client switch is unreliable, so we DON'T
+# depend on wifi-connect completing the join: as soon as the user's WiFi
+# profile appears, we mark provisioned and REBOOT — the adapter comes up fresh
+# in client mode and NetworkManager auto-connects to the saved network.
+"$WIFI_CONNECT" \
+    --portal-ssid "$PORTAL_SSID" \
+    --portal-passphrase "$PORTAL_PASSPHRASE" \
+    --ui-directory "$UI_DIR" &
+WC_PID=$!
+
+# Wait up to ~20 min for the user to submit their WiFi via the portal.
+for _ in $(seq 1 600); do
+    kill -0 "$WC_PID" 2>/dev/null || break     # wifi-connect exited on its own
+    NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
+    if [ -n "$NEW" ]; then
+        # user submitted -> ensure autoconnect, mark provisioned, reboot
+        printf '%s\n' "$NEW" | while read -r c; do
+            [ -n "$c" ] && nmcli connection modify "$c" connection.autoconnect yes 2>/dev/null || true
+        done
+        mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        kill "$WC_PID" 2>/dev/null || true
+        sleep 3
+        systemctl reboot
+        exit 0
+    fi
+    sleep 2
+done
+
+# wifi-connect exited by itself. If it actually connected, finish + reboot.
+if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
+    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; sleep 3; systemctl reboot
+fi
+exit 0
