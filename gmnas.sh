@@ -22,6 +22,7 @@ header() {
 while true; do
     header
     cat <<'MENU'
+   0) Device info                 (login summary: IP, links, services)
    1) Status / diagnostics        (gm-debug)
    2) System monitor              (btop)
    3) Connect to a WiFi network   (join-wifi)
@@ -30,13 +31,17 @@ while true; do
    i) Install error log           (subiquity debug)
    6) Web links (Welcome / Cockpit / Terminal)
    7) Restart web services        (welcome + terminal)
-   8) Update gm-nas from GitHub   (gm-update)
+   a) Install ALL components      (Cockpit/Tailscale/Samba/NFS/ttyd/welcome)
+   8) Update gm-nas from GitHub   (gm-update, online)
+   m) Mount the Ventoy USB        (at /mnt/ventoy)
+   u) Apply edits from Ventoy USB (offline update, no reinstall)
    9) Open a shell
    r) Reboot          p) Power off          q) Quit
 MENU
     echo
     read -rp "Choose: " c
     case "$c" in
+        0) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
         1) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
         2) btop ;;
         3) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
@@ -44,7 +49,7 @@ MENU
            sudo join-wifi "$s" "$p" 2>/dev/null || sudo bash /usr/local/bin/join-wifi "$s" "$p"; pause ;;
         4) sudo reset-setup 2>/dev/null || sudo bash /usr/local/bin/reset-setup
            echo; echo "Connect a phone to WiFi 'GMNas-Setup' (password: gmnas2026)"; pause ;;
-        5) less /var/log/gm-nas-setup.log 2>/dev/null || echo "no log yet"; [ -f /var/log/gm-nas-setup.log ] || pause ;;
+        5) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
         i|I) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
         6) h="$(H).local"
            echo "  Welcome  : http://$h"
@@ -52,7 +57,10 @@ MENU
            echo "  Terminal : http://$h:7681"; pause ;;
         7) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
            echo "restarted."; pause ;;
+        a|A) sudo gm-install-all 2>/dev/null || sudo bash /usr/local/bin/gm-install-all; pause ;;
         8) sudo gm-update 2>/dev/null || sudo bash /usr/local/bin/gm-update; pause ;;
+        m|M) sudo gm-usb mount 2>/dev/null || sudo bash /usr/local/bin/gm-usb mount; pause ;;
+        u|U) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
         9) echo "Type 'exit' to return to the menu."; bash ;;
         r|R) sudo reboot ;;
         p|P) sudo poweroff ;;

@@ -32,6 +32,11 @@ get files/firstboot-wifi.sh         /usr/local/sbin/firstboot-wifi.sh
 get files/homenas-firstboot.service /etc/systemd/system/homenas-firstboot.service
 get ui/index.html                   /usr/local/lib/wifi-connect/ui/index.html
 
+# Refresh the helper commands too (so the gmnas menu updates itself).
+for h in gmnas gm-usb gm-update join-wifi reset-setup gm-install-all; do
+    if curl -fsSL "$BASE/$h.sh" -o "/usr/local/bin/$h"; then chmod +x "/usr/local/bin/$h"; echo "  updated cmd: $h"; fi
+done
+
 chmod +x /usr/local/sbin/firstboot-wifi.sh 2>/dev/null || true
 
 systemctl daemon-reload
