@@ -185,12 +185,12 @@ def start_install(appname, cmd):
 def cockpit_state():
     if shutil.which("cockpit-bridge") or os.path.isdir("/usr/share/cockpit"):
         return "ready"
-    return "busy" if is_installing("cockpit") else "off"
+    return "busy" if is_installing("setup") else "off"
 
 
 def tailscale_state():
     if not shutil.which("tailscale"):
-        return "busy" if is_installing("tailscale") else "off"
+        return "busy" if is_installing("setup") else "off"
     # installed — are we logged in / up?
     try:
         out = subprocess.check_output(["tailscale", "status"], text=True,
@@ -248,6 +248,12 @@ COCKPIT_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get update; "
                "apt-get install -y cockpit; systemctl enable --now cockpit.socket")
 TAILSCALE_CMD = ("curl -fsSL https://tailscale.com/install.sh | sh; "
                  "systemctl enable --now tailscaled")
+TS_UP_CMD = ("tailscale up --accept-routes 2>&1 | tee -a '%s/install-tailscale.log'"
+             % LOG_DIR)
+# ONE ordered chain (Cockpit -> Tailscale -> sign-in link). Runs under a single
+# 'setup' lock so two apt processes never collide on the dpkg lock. `tailscale
+# up` blocks until the end user signs in, holding the lock (so we don't loop).
+SETUP_CMD = "; ".join([COCKPIT_CMD, TAILSCALE_CMD, TS_UP_CMD])
 
 
 @app.route("/")
@@ -258,19 +264,16 @@ def index():
     #    one-time sign-in link. The END USER clicks it and logs into THEIR OWN
     #    Tailscale account — no auth key is baked into the box. Once they sign
     #    in, this box appears in their tailnet.
-    if have_internet():
-        if cockpit_state() == "off":
-            start_install("cockpit", COCKPIT_CMD)
-        ts = tailscale_state()
-        if ts == "off":
-            start_install("tailscale", TAILSCALE_CMD)
-        elif ts == "ready" and not tailscale_login_url():
-            start_install("tailscale", "tailscale up --accept-routes")
-
     cockpit = cockpit_state()
     tailscale = tailscale_state()
-    busy = (cockpit == "busy" or tailscale == "busy"
-            or is_installing("cockpit") or is_installing("tailscale"))
+    # Kick off the ordered install chain until everything is done: Cockpit
+    # installed AND Tailscale connected. While `tailscale up` waits for the
+    # user's sign-in, the 'setup' lock is held so this won't re-trigger.
+    done = cockpit == "ready" and tailscale == "up"
+    if have_internet() and not done and not is_installing("setup"):
+        start_install("setup", SETUP_CMD)
+
+    busy = is_installing("setup")
     return render_template_string(
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=os.path.exists(PW_FLAG),
@@ -281,30 +284,22 @@ def index():
         msg=request.args.get("msg"), msgcls=request.args.get("cls", "ok"))
 
 
+# Manual triggers (fallbacks) all funnel to the same ordered, serialized chain
+# so nothing ever runs two apt processes at once.
 @app.route("/install/cockpit", methods=["POST"])
-def install_cockpit():
-    if not have_internet():
-        return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
-    start_install("cockpit", COCKPIT_CMD)
-    return redirect("/?msg=Installing Cockpit…")
-
-
 @app.route("/install/tailscale", methods=["POST"])
-def install_tailscale():
+def install_apps():
     if not have_internet():
         return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
-    start_install("tailscale", TAILSCALE_CMD)
-    return redirect("/?msg=Installing Tailscale…")
+    start_install("setup", SETUP_CMD)
+    return redirect("/?msg=Installing apps… Cockpit first, then Tailscale.")
 
 
 @app.route("/tailscale/up", methods=["POST"])
 def tailscale_up():
     if not shutil.which("tailscale"):
         return redirect("/?cls=err&msg=Install Tailscale first.")
-    # `tailscale up` prints a login URL; capture it into the install log so the
-    # page can surface it. Background it (the command blocks until auth).
-    _, log = _paths("tailscale")
-    start_install("tailscale", "tailscale up --accept-routes 2>&1 | tee -a '%s'" % log)
+    start_install("setup", TS_UP_CMD)
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
 
 
