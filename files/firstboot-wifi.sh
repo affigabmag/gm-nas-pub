@@ -98,7 +98,10 @@ done
 
 if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
     log "connected after wifi-connect exit -> provisioning + reboot"
-    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; sleep 3; systemctl reboot
+    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; sleep 3
+    log "provisioned -> rebooting now"
+    systemctl reboot
+    exit 0
 fi
 log "firstboot-wifi finished without provisioning (exit 0)"
 exit 0

@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.18.20260718193043"   # bump when this menu changes
+MENU_VER="01.19.20260718193921"   # bump when this menu changes
 
 H() { hostname 2>/dev/null; }
 IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
