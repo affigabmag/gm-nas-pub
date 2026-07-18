@@ -27,6 +27,7 @@ while true; do
    3) Connect to a WiFi network   (join-wifi)
    4) Show the setup WiFi again   (GMNas-Setup AP)
    5) View the setup log
+   i) Install error log           (subiquity debug)
    6) Web links (Welcome / Cockpit / Terminal)
    7) Restart web services        (welcome + terminal)
    8) Update gm-nas from GitHub   (gm-update)
@@ -44,6 +45,7 @@ MENU
         4) sudo reset-setup 2>/dev/null || sudo bash /usr/local/bin/reset-setup
            echo; echo "Connect a phone to WiFi 'GMNas-Setup' (password: gmnas2026)"; pause ;;
         5) less /var/log/gm-nas-setup.log 2>/dev/null || echo "no log yet"; [ -f /var/log/gm-nas-setup.log ] || pause ;;
+        i|I) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
         6) h="$(H).local"
            echo "  Welcome  : http://$h"
            echo "  Cockpit  : https://$h:9090"
