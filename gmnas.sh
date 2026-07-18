@@ -5,45 +5,65 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.26.20260718223244"   # bump when this menu changes
+MENU_VER="01.27.20260718223957"   # bump when this menu changes
+
+# --- colors (htop/btop-ish); disabled automatically when not a terminal -----
+if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
+    R=$'\e[0m'; B=$'\e[1m'; DIM=$'\e[2m'
+    CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
+    MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
+else
+    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=
+fi
 
 H() { hostname 2>/dev/null; }
 IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
 pause() { echo; read -rp "Press Enter to continue…" _; }
 run() { echo "+ $*"; "$@"; }
 
+RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
 header() {
     clear 2>/dev/null || true
-    local ip; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
-    echo "=================== gm-nas control menu ==================="
-    echo "  Host : $(H).local        IP : $ip"
-    echo "  Seed : $(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')"
-    echo "  Menu : v$MENU_VER"
-    echo "=========================================================="
+    local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
+    if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
+    printf "${CY}%s${R}\n" "$RULE"
+    printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b\n" "$prov"
+    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}\n" "$(H)" "$ip"
+    printf "  ${GY}Seed${R} ${CY}%s${R}   ${GY}Menu${R} ${CY}v%s${R}\n" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
+    printf "${CY}%s${R}\n" "$RULE"
 }
+
+# item <key> <title> <desc>
+item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}\n" "$1" "$2" "$3"; }
+# sec <label>
+sec()  { printf "\n ${MG}${B}%s${R}\n" "$1"; }
 
 while true; do
     header
-    cat <<'MENU'
-   a) Device info                 (login summary: IP, links, services)
-   b) Status / diagnostics        (gm-debug)
-   c) View the setup log
-   d) Install error log           (subiquity debug)
-   e) View gm-nas logs            (firstboot / join-wifi / reset / etc.)
-   f) System monitor              (btop)
-   g) Connect to a WiFi network   (join-wifi)
-   h) First-time WiFi wizard      (broadcast GMNas-Setup, set up from phone)
-   i) Web links                   (Welcome / Cockpit / Terminal)
-   j) Restart web services        (welcome + terminal)
-   k) Install ALL components      (Cockpit/Tailscale/Samba/NFS/ttyd/welcome)
-   l) Update gm-nas from GitHub   (gm-update, online)
-   m) Mount and view files        (mount a USB drive and list its files)
-   n) Apply edits from Ventoy USB (offline update, no reinstall)
-   o) Open a shell
-   p) Reboot          q) Power off          r) Quit
-MENU
-    echo
-    read -rsn1 -p "Choose: " c; echo
+    sec "INFO & LOGS"
+    item a "Device info"        "login summary: IP, links, services"
+    item b "Status / diag"      "gm-debug"
+    item c "Setup log"          "the install/setup log"
+    item d "Install error log"  "subiquity debug"
+    item e "gm-nas logs"        "firstboot / join-wifi / reset / etc."
+    item f "System monitor"     "btop"
+    sec "NETWORK & SETUP"
+    item g "Connect to WiFi"    "join-wifi"
+    item h "First-time wizard"  "broadcast GMNas-Setup, set up from phone"
+    sec "WEB & SERVICES"
+    item i "Web links"          "Welcome / Cockpit / Terminal"
+    item j "Restart web svcs"   "welcome + terminal"
+    sec "INSTALL & UPDATE"
+    item k "Install ALL"        "Cockpit/Tailscale/Samba/NFS/ttyd/welcome"
+    item l "Update from GitHub" "gm-update, online"
+    item m "Mount & view files" "mount a USB drive and list files"
+    item n "Apply Ventoy edits" "offline update, no reinstall"
+    sec "SHELL & POWER"
+    item o "Open a shell"       ""
+    printf "   ${B}${YL}p${R}  ${WH}Reboot${R}     ${B}${YL}q${R}  ${WH}Power off${R}     ${B}${RD}r${R}  ${WH}Quit${R}\n"
+    printf "\n ${GR}Choose${R} ${DIM}(single key)${R} ${GR}❯${R} "
+    read -rsn1 c; echo
     case "$c" in
         a|A) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
         b|B) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
