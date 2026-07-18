@@ -215,7 +215,11 @@
         '</div>'
       );
 
+      // wifi-connect's /connect endpoint REQUIRES an 'identity' param (empty
+      // for WPA-PSK; only used for WPA-Enterprise). Omitting it makes the
+      // server reject with "'identity' not found" and no profile is saved.
       var body = 'ssid=' + encodeURIComponent(ssid) +
+                 '&identity=' +
                  '&passphrase=' + encodeURIComponent(passInput.value);
 
       // Fire the request. wifi-connect shuts the AP off the instant it succeeds,
