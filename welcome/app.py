@@ -280,10 +280,19 @@ TAILSCALE_CMD = ("curl -fsSL https://tailscale.com/install.sh | sh; "
                  "systemctl enable --now tailscaled")
 TS_UP_CMD = ("tailscale up --accept-routes 2>&1 | tee -a '%s/install-tailscale.log'"
              % LOG_DIR)
-# ONE ordered chain (Cockpit -> Tailscale -> sign-in link). Runs under a single
-# 'setup' lock so two apt processes never collide on the dpkg lock. `tailscale
-# up` blocks until the end user signs in, holding the lock (so we don't loop).
-SETUP_CMD = "; ".join([COCKPIT_CMD, TAILSCALE_CMD, TS_UP_CMD])
+# ttyd browser terminal (:7681) — a single static binary + its service unit.
+# Not apt, so it can't collide on the dpkg lock; installed as part of the chain
+# so the Terminal link actually works after setup.
+TTYD_CMD = (
+    "curl -fsSL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 "
+    "-o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd && "
+    "curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/files/ttyd.service "
+    "-o /etc/systemd/system/ttyd.service && systemctl daemon-reload && "
+    "systemctl enable --now ttyd.service")
+# ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
+# under a single 'setup' lock so two apt processes never collide on the dpkg
+# lock. `tailscale up` blocks until the end user signs in, holding the lock.
+SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, TAILSCALE_CMD, TS_UP_CMD])
 
 
 @app.route("/")
