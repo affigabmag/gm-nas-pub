@@ -39,7 +39,7 @@ while true; do
    r) Reboot          p) Power off          q) Quit
 MENU
     echo
-    read -rp "Choose: " c
+    read -rsn1 -p "Choose: " c; echo
     case "$c" in
         0) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
         1) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
