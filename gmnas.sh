@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.30.20260718230141"   # bump when this menu changes
+MENU_VER="01.31.20260718230352"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -108,8 +108,10 @@ while true; do
         m|M) sudo gm-usb mount 2>/dev/null || sudo bash /usr/local/bin/gm-usb mount; pause ;;
         n|N) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
         o|O) echo "Type 'exit' to return to the menu."; bash ;;
-        p|P) sudo reboot ;;
-        q|Q) sudo poweroff ;;
+        p|P) printf "${YL}Reboot the box now? [y/N] ${R}"; read -rsn1 yn; echo
+             if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo reboot; else echo "cancelled"; pause; fi ;;
+        q|Q) printf "${RD}Power OFF the box? It will NOT come back without pressing the physical power button. [y/N] ${R}"; read -rsn1 yn; echo
+             if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo poweroff; else echo "cancelled"; pause; fi ;;
         r|R) exit 0 ;;
         *) ;;
     esac
