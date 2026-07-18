@@ -107,6 +107,7 @@ PAGE = """<!doctype html>
    <span class="name">Tailscale</span>
    <span class="grow"><span class="desc">Secure remote access from anywhere (VPN)</span></span>
    {% if tailscale == 'up' %}<span class="badge b-ok">Connected</span>
+   {% elif ts_login_url %}<span class="badge b-busy">Waiting for sign-in ↓</span>
    {% elif tailscale == 'ready' %}
      <form class="inline" method="post" action="/tailscale/up"><button>Connect</button></form>
    {% elif tailscale == 'busy' %}<span class="badge b-busy">Installing…</span>
@@ -251,14 +252,25 @@ TAILSCALE_CMD = ("curl -fsSL https://tailscale.com/install.sh | sh; "
 
 @app.route("/")
 def index():
-    # Cockpit auto-installs itself the first time this page is opened after
-    # setup (box is now on stable home WiFi). Fire-and-forget, once.
-    if cockpit_state() == "off" and have_internet():
-        start_install("cockpit", COCKPIT_CMD)
+    # First time this page is opened after setup (box is on stable home WiFi):
+    #  - Cockpit auto-installs in the background.
+    #  - Tailscale auto-installs, then auto-runs `tailscale up` to surface a
+    #    one-time sign-in link. The END USER clicks it and logs into THEIR OWN
+    #    Tailscale account — no auth key is baked into the box. Once they sign
+    #    in, this box appears in their tailnet.
+    if have_internet():
+        if cockpit_state() == "off":
+            start_install("cockpit", COCKPIT_CMD)
+        ts = tailscale_state()
+        if ts == "off":
+            start_install("tailscale", TAILSCALE_CMD)
+        elif ts == "ready" and not tailscale_login_url():
+            start_install("tailscale", "tailscale up --accept-routes")
 
     cockpit = cockpit_state()
     tailscale = tailscale_state()
-    busy = cockpit == "busy" or tailscale == "busy"
+    busy = (cockpit == "busy" or tailscale == "busy"
+            or is_installing("cockpit") or is_installing("tailscale"))
     return render_template_string(
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=os.path.exists(PW_FLAG),
