@@ -21,7 +21,7 @@ import re
 import shutil
 import subprocess
 from html import escape
-from flask import Flask, request, redirect, render_template_string
+from flask import Flask, request, redirect, render_template_string, jsonify
 
 app = Flask(__name__)
 
@@ -69,6 +69,13 @@ PAGE = """<!doctype html>
   cursor:pointer;font-size:18px;padding:6px 8px;line-height:1;opacity:.7;width:auto;margin:0}
  .eye:hover,.eye.on{opacity:1}
  .ver{text-align:center;color:var(--muted);font-size:11px;margin:22px 0 8px}
+ .netstrip{display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;
+  padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--border)}
+ .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+ .dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+ .dot.off{background:var(--danger)}
+ .dot.warn{background:var(--warn)}
+ .netstrip .ip{color:var(--muted);font-size:12px}
  .app{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
  .app:first-of-type{border-top:none}
  .app .name{font-weight:600;flex:0 0 auto} .app .desc{color:var(--muted);font-size:12px}
@@ -82,7 +89,12 @@ PAGE = """<!doctype html>
   text-decoration:none;border-radius:8px;padding:10px 14px;font-size:13px}
 </style></head><body><div class="wrap">
  <header><div class="logo">N</div><h1>Welcome to your gm-nas</h1>
-  <p class="sub">{{ host }}</p></header>
+  <p class="sub">{{ host }}</p>
+  <div id="netstrip" class="netstrip">
+    <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
+    <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
+    <span id="netip" class="ip">{{ ip }}</span>
+  </div></header>
 
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
@@ -163,6 +175,23 @@ PAGE = """<!doctype html>
      btn.title = show ? 'Hide password' : 'Show password';
    });
  });
+ // Live connectivity heartbeat — polls /status every 5s and updates the badge,
+ // the same way the Tailscale row shows Connected/Not.
+ (function(){
+   var dot = document.getElementById('netdot');
+   var txt = document.getElementById('nettext');
+   var ipEl = document.getElementById('netip');
+   function beat(){
+     fetch('/status', {cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
+       dot.className = 'dot ' + (s.online ? 'ok' : 'off');
+       txt.textContent = s.online ? 'Online' : 'Offline';
+       ipEl.textContent = s.ip || '';
+     }).catch(function(){
+       dot.className = 'dot off'; txt.textContent = 'Offline';
+     });
+   }
+   setInterval(beat, 5000);
+ })();
 </script>
 </body></html>"""
 
@@ -180,6 +209,22 @@ def seed_version():
             return f.read().strip() or "?"
     except OSError:
         return "?"
+
+
+def box_ip():
+    try:
+        out = subprocess.check_output(["hostname", "-I"], text=True).split()
+        return out[0] if out else ""
+    except Exception:
+        return ""
+
+
+def tailscale_ip():
+    try:
+        return subprocess.check_output(["tailscale", "ip", "-4"], text=True,
+                                       stderr=subprocess.DEVNULL, timeout=5).strip()
+    except Exception:
+        return ""
 
 
 # ---- background install helpers -------------------------------------------
@@ -320,6 +365,7 @@ def index():
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(),
+        online=have_internet(), ip=box_ip(),
         msg=request.args.get("msg"), msgcls=request.args.get("cls", "ok"))
 
 
@@ -340,6 +386,13 @@ def tailscale_up():
         return redirect("/?cls=err&msg=Install Tailscale first.")
     start_install("setup", TS_UP_CMD)
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
+
+
+@app.route("/status")
+def status():
+    ts = tailscale_state()
+    return jsonify(online=have_internet(), ip=box_ip(),
+                   tailscale=ts, tailscale_ip=(tailscale_ip() if ts == "up" else ""))
 
 
 @app.route("/password", methods=["POST"])
