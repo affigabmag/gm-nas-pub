@@ -26,7 +26,7 @@ while true; do
    1) Status / diagnostics        (gm-debug)
    2) System monitor              (btop)
    3) Connect to a WiFi network   (join-wifi)
-   4) Show the setup WiFi again   (GMNas-Setup AP)
+   4) Simulate first-time wizard  (re-show GMNas-Setup AP + portal)
    5) View the setup log
    i) Install error log           (subiquity debug)
    6) Web links (Welcome / Cockpit / Terminal)

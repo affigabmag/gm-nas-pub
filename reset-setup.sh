@@ -15,6 +15,9 @@ fi
 echo "== clearing provisioned flag =="
 rm -f /etc/homenas/provisioned
 
+echo "== stopping welcome app so wifi-connect can own port 80 =="
+systemctl stop gmnas-welcome.service 2>/dev/null || true
+
 echo "== disconnecting WiFi so the box is not 'online' =="
 for dev in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}'); do
     nmcli device disconnect "$dev" 2>/dev/null || true

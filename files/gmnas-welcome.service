@@ -2,6 +2,9 @@
 Description=gm-nas welcome app (post-setup web UI)
 After=network-online.target
 Wants=network-online.target
+# Only after WiFi setup is done — during first-boot setup, wifi-connect owns
+# port 80 for its captive portal. (No conflict / no shadowing.)
+ConditionPathExists=/etc/homenas/provisioned
 
 [Service]
 Type=simple
