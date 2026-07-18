@@ -13,6 +13,10 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/gm-update.log") 2>&1
+echo "$(date '+%F %T') ===== gm-update start ====="
+
 echo "== gm-nas update: pulling latest from gm-nas-pub =="
 
 # Flask for the welcome app (no-op if already present)

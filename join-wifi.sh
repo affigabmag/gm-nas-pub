@@ -15,6 +15,10 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/join-wifi.log") 2>&1
+echo "$(date '+%F %T') ===== join-wifi start (SSID=$SSID) ====="
+
 echo "== stopping the setup AP =="
 systemctl stop homenas-firstboot.service 2>/dev/null || true
 pkill -f wifi-connect 2>/dev/null || true

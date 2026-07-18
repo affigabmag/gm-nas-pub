@@ -14,6 +14,10 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/gm-install-all.log") 2>&1
+echo "$(date '+%F %T') ===== gm-install-all start ====="
+
 # need internet
 if ! getent hosts github.com >/dev/null 2>&1 && ! curl -fsS --max-time 8 https://github.com >/dev/null 2>&1; then
     echo "No internet — connect WiFi/tether first (try: sudo join-wifi)." >&2

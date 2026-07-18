@@ -26,6 +26,7 @@ while true; do
    2) Status / diagnostics        (gm-debug)
    3) View the setup log
    4) Install error log           (subiquity debug)
+   l) View gm-nas logs            (firstboot / join-wifi / reset / etc.)
    5) System monitor              (btop)
    6) Connect to a WiFi network   (join-wifi)
    7) First-time WiFi wizard      (broadcast GMNas-Setup, set up from phone)
@@ -70,6 +71,9 @@ MENU
            pause ;;
         3) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
         4) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
+        l|L) echo "--- /var/log/gm-nas/ ---"; ls -l /var/log/gm-nas/ 2>/dev/null || echo "(no gm-nas logs yet)"
+             echo; echo "--- firstboot-wifi.log (last 50) ---"
+             sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"; pause ;;
         8) h="$(H).local"
            echo "  Welcome  : http://$h"
            echo "  Cockpit  : https://$h:9090"
