@@ -64,6 +64,11 @@ PAGE = """<!doctype html>
  .msg{margin-top:12px;font-size:14px} .ok{color:var(--ok)} .err{color:var(--danger)}
  table{width:100%;border-collapse:collapse;font-size:14px} td{padding:6px 0;border-top:1px solid var(--border)}
  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+ .pass-wrap{position:relative} .pass-wrap input{padding-right:46px}
+ .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;
+  cursor:pointer;font-size:18px;padding:6px 8px;line-height:1;opacity:.7;width:auto;margin:0}
+ .eye:hover,.eye.on{opacity:1}
+ .ver{text-align:center;color:var(--muted);font-size:11px;margin:22px 0 8px}
  .app{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
  .app:first-of-type{border-top:none}
  .app .name{font-weight:600;flex:0 0 auto} .app .desc{color:var(--muted);font-size:12px}
@@ -85,8 +90,12 @@ PAGE = """<!doctype html>
  <div class="card"><h2>1. Set your admin password</h2>
   <p class="hint">Needed to sign in to Cockpit and to run admin tasks. User: <b>{{ admin }}</b>.</p>
   <form method="post" action="/password">
-   <label>New password</label><input type="password" name="pw" required minlength="8">
-   <label>Confirm password</label><input type="password" name="pw2" required minlength="8">
+   <label>New password</label>
+   <div class="pass-wrap"><input type="password" name="pw" class="pw" required minlength="8">
+    <button type="button" class="eye" aria-label="Show password">👁</button></div>
+   <label>Confirm password</label>
+   <div class="pass-wrap"><input type="password" name="pw2" class="pw" required minlength="8">
+    <button type="button" class="eye" aria-label="Show password">👁</button></div>
    <button type="submit">Set password</button>
   </form></div>
  {% endif %}
@@ -142,7 +151,20 @@ PAGE = """<!doctype html>
   </form>
   <p class="hint">Folders live under {{ storage }} and are shared over your home network (Samba).</p>
  </div>
-</div></body></html>"""
+ <div class="ver">gm-nas &bull; {{ version }}</div>
+</div>
+<script>
+ document.querySelectorAll('.eye').forEach(function(btn){
+   btn.addEventListener('click', function(){
+     var inp = btn.parentNode.querySelector('input');
+     var show = inp.type === 'password';
+     inp.type = show ? 'text' : 'password';
+     btn.classList.toggle('on', show);
+     btn.title = show ? 'Hide password' : 'Show password';
+   });
+ });
+</script>
+</body></html>"""
 
 
 def hostname():
@@ -150,6 +172,14 @@ def hostname():
         return subprocess.check_output(["hostname"], text=True).strip() + ".local"
     except Exception:
         return "my-gmnas.local"
+
+
+def seed_version():
+    try:
+        with open("/etc/gmnas-seed-version") as f:
+            return f.read().strip() or "?"
+    except OSError:
+        return "?"
 
 
 # ---- background install helpers -------------------------------------------
@@ -280,7 +310,7 @@ def index():
         shares=list_shares(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
-        busy=busy,
+        busy=busy, version=seed_version(),
         msg=request.args.get("msg"), msgcls=request.args.get("cls", "ok"))
 
 

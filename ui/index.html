@@ -79,6 +79,16 @@
     .msg.err { color: var(--danger); }
     .msg.ok { color: var(--ok); }
     .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .pass-wrap { position: relative; }
+    .pass-wrap input { padding-right: 46px; width: 100%; }
+    .eye {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; font-size: 18px;
+      padding: 6px 8px; line-height: 1; opacity: .7;
+    }
+    .eye:hover { opacity: 1; }
+    .eye.on { opacity: 1; }
+    .ver { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
     .spinner {
       display: inline-block; width: 16px; height: 16px; vertical-align: -3px;
       border: 2px solid var(--muted); border-top-color: var(--accent);
@@ -121,8 +131,12 @@
         </div>
 
         <label for="pass">WiFi password</label>
-        <input id="pass" name="passphrase" type="password" placeholder="Your home WiFi password"
-               autocapitalize="none" autocomplete="off" />
+        <div class="pass-wrap">
+          <input id="pass" name="passphrase" type="password" placeholder="Your home WiFi password"
+                 autocapitalize="none" autocomplete="off" />
+          <button type="button" id="togglePass" class="eye" title="Show password"
+                  aria-label="Show password">👁</button>
+        </div>
         <div class="hint">Leave blank only for an open network.</div>
 
         <button type="submit" id="submit" class="primary">Connect</button>
@@ -130,6 +144,7 @@
 
       <div id="msg" class="msg"></div>
     </div>
+    <div class="ver">gm-nas setup &bull; v01.25.20260718222854</div>
   </div>
 
   <script>
@@ -137,6 +152,13 @@
     var manualWrap= document.getElementById('manualWrap');
     var manualSsid= document.getElementById('manualSsid');
     var passInput = document.getElementById('pass');
+    var togglePass= document.getElementById('togglePass');
+    togglePass.addEventListener('click', function () {
+      var show = passInput.type === 'password';
+      passInput.type = show ? 'text' : 'password';
+      togglePass.classList.toggle('on', show);
+      togglePass.title = show ? 'Hide password' : 'Show password';
+    });
     var form      = document.getElementById('form');
     var submitBtn = document.getElementById('submit');
     var refreshBtn= document.getElementById('refresh');
