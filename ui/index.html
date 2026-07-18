@@ -245,15 +245,22 @@
               'Then find your gm-nas at <b style="color:var(--fg)">my-gmnas.local</b>.' +
             '</div>' +
             '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 4:00</div>' +
+            '<a id="openbtn" href="http://my-gmnas.local" ' +
+               'style="display:none;margin-top:18px;background:var(--ok);color:#04331b;font-weight:700;' +
+                      'text-decoration:none;border-radius:10px;padding:14px;font-size:16px">Open my gm-nas ↗</a>' +
           '</div>'
         );
         var left = 240, el = document.getElementById('cd');
+        var openbtn = document.getElementById('openbtn');
         var iv = setInterval(function () {
           left--;
           if (left <= 0) {
             clearInterval(iv);
             el.style.color = 'var(--ok)';
-            el.innerHTML = 'Ready — open <b>my-gmnas.local</b>';
+            el.innerHTML = 'Ready! Reconnect your phone to home WiFi, then:';
+            openbtn.style.display = 'block';
+            // Auto-open the welcome app (works once the phone is back on home WiFi).
+            setTimeout(function () { window.location.href = 'http://my-gmnas.local'; }, 2000);
             return;
           }
           var m = Math.floor(left / 60), s = left % 60;
