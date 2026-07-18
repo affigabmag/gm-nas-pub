@@ -3,8 +3,11 @@ Description=gm-nas first-boot WiFi provisioning (wifi-connect captive portal)
 Documentation=https://github.com/affigabmag/gm-nas
 After=NetworkManager.service
 Wants=NetworkManager.service
-# Skip entirely once the device has been provisioned.
-ConditionPathExists=!/etc/homenas/provisioned
+# Runs on EVERY boot (no flag gate). The script decides by CONNECTIVITY:
+# if the box has an active network it exits immediately (normal boot); if it
+# has no working WiFi it launches the setup AP. This guarantees a headless box
+# (no keyboard/screen) can ALWAYS be (re)configured from a phone — even if a
+# saved network stops working (wrong password, moved home, router replaced).
 
 [Service]
 # Type=simple so it runs in the BACKGROUND: boot continues, the console/SSH

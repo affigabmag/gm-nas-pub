@@ -25,25 +25,40 @@ WIFI_CONNECT="/usr/local/lib/wifi-connect/wifi-connect"
 log "=============== firstboot-wifi start ==============="
 log "flag=$FLAG  wifi_connect=$WIFI_CONNECT  ui=$UI_DIR"
 
-if [ -f "$FLAG" ]; then
-    log "already provisioned -> exit 0"
-    exit 0
-fi
-
-log "waiting 5s for NetworkManager radios..."
-sleep 5
-
-log "connectivity state: $(nmcli -t -f STATE g 2>/dev/null)"
+# -------------------------------------------------------------------------
+# DECISION IS CONNECTIVITY-BASED (not the provisioned flag): run the WiFi
+# wizard whenever the box has no active network. A headless box (no keyboard/
+# screen) that loses its saved WiFi (wrong password, moved home, router
+# replaced) must ALWAYS be able to fall back to the setup AP so it can be
+# reconfigured from a phone. The user may power-cycle freely; every boot
+# re-evaluates connectivity.
+# -------------------------------------------------------------------------
+log "waiting for NetworkManager + autoconnect of any saved WiFi (up to ~60s)..."
+CONNECTED=no
+for i in $(seq 1 12); do
+    st="$(nmcli -t -f STATE g 2>/dev/null)"
+    if [ "$st" = "connected" ]; then CONNECTED=yes; break; fi
+    log "  [$i/12] connectivity=$st — waiting 5s for a saved network..."
+    sleep 5
+done
 log "devices: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
 
-if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
-    log "already online -> mark provisioned + exit"
+if [ "$CONNECTED" = yes ]; then
+    log "network is UP -> normal boot (mark provisioned), no wizard"
     mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
     exit 0
 fi
 
+log "NO active network after wait -> (re)running the first-time WiFi wizard"
+# Offline: treat the box as needing setup again so the welcome app (gated on
+# this flag) stays down while the setup AP owns port 80.
+rm -f "$FLAG" 2>/dev/null || true
+# The welcome app may have already grabbed :80 on a stale flag — free it so
+# wifi-connect's captive portal can bind.
+systemctl stop gmnas-welcome.service 2>/dev/null || true
+
 if ! nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
-    log "NO wifi device found -> skip setup AP, exit 0"
+    log "NO wifi device found -> cannot start setup AP, exit 0"
     exit 0
 fi
 
