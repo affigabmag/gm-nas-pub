@@ -22,29 +22,29 @@ header() {
 while true; do
     header
     cat <<'MENU'
-   0) Device info                 (login summary: IP, links, services)
-   1) Status / diagnostics        (gm-debug)
-   5) View the setup log
-   i) Install error log           (subiquity debug)
-   2) System monitor              (btop)
-   3) Connect to a WiFi network   (join-wifi)
-   4) First-time WiFi wizard      (broadcast GMNas-Setup, set up from phone)
-   6) Web links (Welcome / Cockpit / Terminal)
-   7) Restart web services        (welcome + terminal)
+   1) Device info                 (login summary: IP, links, services)
+   2) Status / diagnostics        (gm-debug)
+   3) View the setup log
+   4) Install error log           (subiquity debug)
+   5) System monitor              (btop)
+   6) Connect to a WiFi network   (join-wifi)
+   7) First-time WiFi wizard      (broadcast GMNas-Setup, set up from phone)
+   8) Web links                   (Welcome / Cockpit / Terminal)
+   9) Restart web services        (welcome + terminal)
    a) Install ALL components      (Cockpit/Tailscale/Samba/NFS/ttyd/welcome)
-   8) Update gm-nas from GitHub   (gm-update, online)
+   g) Update gm-nas from GitHub   (gm-update, online)
    m) Mount and view files        (mount a USB drive and list its files)
-   u) Apply edits from Ventoy USB (offline update, no reinstall)
-   9) Open a shell
+   v) Apply edits from Ventoy USB (offline update, no reinstall)
+   s) Open a shell
    r) Reboot          p) Power off          q) Quit
 MENU
     echo
     read -rsn1 -p "Choose: " c; echo
     case "$c" in
-        0) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
-        1) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
-        2) btop ;;
-        3) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
+        1) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
+        2) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
+        5) btop ;;
+        6) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
            sudo join-wifi "$s" "$p" 2>/dev/null || sudo bash /usr/local/bin/join-wifi "$s" "$p"
            echo
@@ -52,7 +52,7 @@ MENU
            echo "Reboot now? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then sudo reboot; else pause; fi ;;
-        4) echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
+        7) echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
@@ -68,19 +68,19 @@ MENU
              echo "  =========================================="
            else echo "cancelled."; fi
            pause ;;
-        5) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
-        i|I) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
-        6) h="$(H).local"
+        3) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
+        4) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
+        8) h="$(H).local"
            echo "  Welcome  : http://$h"
            echo "  Cockpit  : https://$h:9090"
            echo "  Terminal : http://$h:7681"; pause ;;
-        7) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
+        9) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
            echo "restarted."; pause ;;
         a|A) sudo gm-install-all 2>/dev/null || sudo bash /usr/local/bin/gm-install-all; pause ;;
-        8) sudo gm-update 2>/dev/null || sudo bash /usr/local/bin/gm-update; pause ;;
+        g|G) sudo gm-update 2>/dev/null || sudo bash /usr/local/bin/gm-update; pause ;;
         m|M) sudo gm-usb mount 2>/dev/null || sudo bash /usr/local/bin/gm-usb mount; pause ;;
-        u|U) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
-        9) echo "Type 'exit' to return to the menu."; bash ;;
+        v|V) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
+        s|S) echo "Type 'exit' to return to the menu."; bash ;;
         r|R) sudo reboot ;;
         p|P) sudo poweroff ;;
         q|Q) exit 0 ;;
