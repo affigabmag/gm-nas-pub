@@ -82,14 +82,36 @@ for _ in $(seq 1 600); do
     fi
     NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
     if [ -n "$NEW" ]; then
-        log "NEW wifi profile detected: [$(echo "$NEW" | tr '\n' ',')] -> provisioning + reboot"
+        log "NEW wifi profile detected: [$(echo "$NEW" | tr '\n' ',')] -> provisioning"
+        FIRST_NEW="$(printf '%s\n' "$NEW" | head -1)"
+        # Make the user's network the top-priority autoconnect on boot.
         printf '%s\n' "$NEW" | while read -r c; do
-            [ -n "$c" ] && nmcli connection modify "$c" connection.autoconnect yes 2>/dev/null || true
+            [ -n "$c" ] && nmcli connection modify "$c" \
+                connection.autoconnect yes connection.autoconnect-priority 100 2>/dev/null || true
         done
-        mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        # Stop wifi-connect so it releases the radio + tears down the AP.
         kill "$WC_PID" 2>/dev/null || true
         sleep 3
-        log "rebooting now"
+        # CRITICAL: delete the setup-AP profile(s) so they cannot re-broadcast
+        # on reboot and steal the radio from the user's network.
+        nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+            | awk -F: '$2 ~ /wireless/ && $1 ~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' \
+            | while read -r ap; do
+                [ -n "$ap" ] && { nmcli connection delete "$ap" 2>/dev/null && log "deleted setup-AP profile: $ap"; }
+              done
+        # Actively bring up the user's network and confirm real connectivity
+        # (up to ~60s) BEFORE we commit — so we never reboot on a half-join.
+        log "activating '$FIRST_NEW' and waiting for connectivity..."
+        for _ in $(seq 1 20); do
+            nmcli connection up "$FIRST_NEW" >/dev/null 2>&1
+            sleep 3
+            if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
+                log "connectivity confirmed on '$FIRST_NEW'"; break
+            fi
+        done
+        mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        log "provisioned -> rebooting now (clean client join)"
+        sleep 2
         systemctl reboot
         exit 0
     fi
@@ -98,6 +120,12 @@ done
 
 if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
     log "connected after wifi-connect exit -> provisioning + reboot"
+    # Same cleanup: drop the setup-AP profile so it can't win on reboot.
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 ~ /wireless/ && $1 ~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' \
+        | while read -r ap; do
+            [ -n "$ap" ] && { nmcli connection delete "$ap" 2>/dev/null && log "deleted setup-AP profile: $ap"; }
+          done
     mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; sleep 3
     log "provisioned -> rebooting now"
     systemctl reboot
