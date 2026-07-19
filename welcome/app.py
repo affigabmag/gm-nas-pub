@@ -45,7 +45,7 @@ PAGE = """<!doctype html>
  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   background:var(--bg);color:var(--fg);padding:16px}
  .wrap{max-width:720px;margin:0 auto}
- header{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;margin:24px 0}
+ header{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 10px;margin:20px 0}
  .logo{width:44px;height:44px;margin:0;border-radius:12px;flex:none;
   background:linear-gradient(135deg,var(--accent),#6366f1);display:flex;align-items:center;
   justify-content:center;font-size:26px;font-weight:700;color:var(--accent-fg)}
@@ -68,8 +68,9 @@ PAGE = """<!doctype html>
   cursor:pointer;font-size:18px;padding:6px 8px;line-height:1;opacity:.7;width:auto;margin:0}
  .eye:hover,.eye.on{opacity:1}
  .ver{text-align:center;color:var(--muted);font-size:11px;margin:22px 0 8px}
- .netstrip{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:13px;
-  padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--border)}
+ .netstrip{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 8px;
+  margin:0;font-size:13px;padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--border)}
+ .netstrip .sep{opacity:.7;font-size:11px}
  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
  .dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
  .dot.off{background:var(--danger)}
@@ -106,8 +107,8 @@ PAGE = """<!doctype html>
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
-  </div>
-  <div class="hver">{{ version }}</div></header>
+    <span class="ip sep">· {{ version }}</span>
+  </div></header>
 
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
