@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.58.20260719201942"   # bump when this menu changes
+MENU_VER="01.59.20260719221037"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -37,16 +37,20 @@ run_helper() {
 }
 run() { echo "+ $*"; "$@"; }
 
-RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Rule/footer are sized to the CURRENT terminal each render -- a fixed-length
+# rule left a gap on wide terminals instead of spanning the full row.
+term_cols() { tput cols 2>/dev/null || echo 60; }
+term_lines() { tput lines 2>/dev/null || echo 24; }
+rule() { local n; n=$(term_cols); printf -v RULE '%*s' "$n" ''; printf '%s' "${RULE// /━}"; }
 
 header() {
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
-    printf "${CY}%s${R}${EL}\n" "$RULE"
+    printf "${CY}%s${R}${EL}\n" "$(rule)"
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
     printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
     printf "  ${GY}Version${R} ${B}${GR}%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
-    printf "${CY}%s${R}${EL}\n" "$RULE"
+    printf "${CY}%s${R}${EL}\n" "$(rule)"
 }
 
 # item <key> <title> <desc>
@@ -82,7 +86,9 @@ render() {
             item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         fi
     done
-    printf "${EL}\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${GR}Esc/q${R} ${DIM}quit${R}   ${DIM}or a letter${R} ${GR}❯${R} \033[J"
+    printf '\033[J'                          # clear any stale content down to the old footer position
+    printf '\033[%d;1H' "$(term_lines)"       # pin the hint bar to the terminal's LAST row
+    printf "${EL} ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${GR}Esc/q${R} ${DIM}quit${R}   ${DIM}or a letter${R} ${GR}❯${R} "
 }
 
 # clear the screen ONCE on entry; render() then redraws in place each keystroke
