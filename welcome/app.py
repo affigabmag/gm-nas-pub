@@ -99,16 +99,20 @@ PAGE = """<!doctype html>
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
  {% if password_not_set %}
- <div class="card"><h2>1. Set your admin password</h2>
-  <p class="hint">Needed to sign in to Cockpit and to run admin tasks. User: <b>{{ admin }}</b>.</p>
-  <form method="post" action="/password">
+ <div class="card"><h2>1. Create your admin account</h2>
+  <p class="hint">Your sign-in for Cockpit and admin tasks. Pick any username you like.</p>
+  <form method="post" action="/account">
+   <label>Username</label>
+   <input name="username" required pattern="[a-z_][a-z0-9_-]{0,31}" autocapitalize="none"
+          autocomplete="off" placeholder="e.g. john">
+   <div class="hint">Lowercase letters, digits, <b>-</b> and <b>_</b>. Must start with a letter.</div>
    <label>New password</label>
    <div class="pass-wrap"><input type="password" name="pw" class="pw" required minlength="8">
     <button type="button" class="eye" aria-label="Show password">👁</button></div>
    <label>Confirm password</label>
    <div class="pass-wrap"><input type="password" name="pw2" class="pw" required minlength="8">
     <button type="button" class="eye" aria-label="Show password">👁</button></div>
-   <button type="submit">Set password</button>
+   <button type="submit">Create admin account</button>
   </form></div>
  {% endif %}
 
@@ -393,6 +397,43 @@ def status():
     ts = tailscale_state()
     return jsonify(online=have_internet(), ip=box_ip(),
                    tailscale=ts, tailscale_ip=(tailscale_ip() if ts == "up" else ""))
+
+
+RESERVED_USERS = {"root", "gmnas", "gmadmin", "daemon", "bin", "sys", "sync",
+                  "nobody", "admin", "ubuntu", "cockpit-ws", "sshd", "systemd"}
+
+
+def user_exists(name):
+    return subprocess.run(["id", name], stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode == 0
+
+
+@app.route("/account", methods=["POST"])
+def create_account():
+    user = request.form.get("username", "").strip()
+    pw = request.form.get("pw", "")
+    pw2 = request.form.get("pw2", "")
+    # Linux username rules: start with a letter/underscore, then lowercase
+    # letters/digits/-/_, max 32 chars total.
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
+        return redirect("/?cls=err&msg=Invalid username: lowercase, start with a letter, only letters/digits/-/_.")
+    if user in RESERVED_USERS or user_exists(user):
+        return redirect(f"/?cls=err&msg=Username '{escape(user)}' is taken — choose another.")
+    if len(pw) < 8:
+        return redirect("/?cls=err&msg=Password must be at least 8 characters.")
+    if pw != pw2:
+        return redirect("/?cls=err&msg=Passwords do not match.")
+    # Create the admin account (sudo-capable, real shell, home dir).
+    r = subprocess.run(["useradd", "-m", "-s", "/bin/bash", "-G", "sudo", user])
+    if r.returncode != 0:
+        return redirect("/?cls=err&msg=Could not create the account.")
+    if subprocess.run(["chpasswd"], input=f"{user}:{pw}", text=True).returncode != 0:
+        return redirect("/?cls=err&msg=Account created but setting the password failed.")
+    try:
+        os.remove(PW_FLAG)   # b1 flow done — Cockpit is now usable
+    except FileNotFoundError:
+        pass
+    return redirect(f"/?msg=Admin account '{escape(user)}' created. Sign in to Cockpit with it.")
 
 
 @app.route("/password", methods=["POST"])
