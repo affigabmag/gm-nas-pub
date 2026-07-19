@@ -39,10 +39,9 @@ SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 # Created once at first setup. The whole storage partition ("/") is the main
 # share; plus documents and a media/{pictures,video} tree.
 DEFAULT_SHARES = [
-    {"name": "storage",   "path": "/srv/storage",               "label": "/ (all storage)"},
-    {"name": "documents", "path": "/srv/storage/documents",     "label": "documents"},
-    {"name": "pictures",  "path": "/srv/storage/media/pictures", "label": "media / pictures"},
-    {"name": "video",     "path": "/srv/storage/media/video",   "label": "media / video"},
+    {"name": "storage",   "path": "/srv/storage",           "label": "/ (all storage)"},
+    {"name": "documents", "path": "/srv/storage/documents", "label": "documents"},
+    {"name": "media",     "path": "/srv/storage/media",     "label": "media"},
 ]
 
 # Background-install bookkeeping (markers + logs).
