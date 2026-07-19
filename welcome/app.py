@@ -135,6 +135,11 @@ PAGE = """<!doctype html>
  <div class="card"><h2>1. Create your admin account</h2>
   <p class="hint">Your sign-in for Cockpit and admin tasks. Pick any username you like.</p>
   <form method="post" action="/account">
+   <label>Device name</label>
+   <input name="hostname" value="{{ hostbase }}" required autocapitalize="none" autocomplete="off"
+          pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?">
+   <div class="hint">How this unit appears on your network: <b>&lt;name&gt;.local</b>.
+    Use a unique name if you have more than one gm-nas.</div>
    <label>Username</label>
    <input name="username" required pattern="[a-z_][a-z0-9_-]{0,31}" autocapitalize="none"
           autocomplete="off" placeholder="e.g. john">
@@ -307,11 +312,36 @@ PAGE = """<!doctype html>
 </body></html>"""
 
 
-def hostname():
+def hostbase():
     try:
-        return subprocess.check_output(["hostname"], text=True).strip() + ".local"
+        return subprocess.check_output(["hostname"], text=True).strip()
     except Exception:
-        return "my-gmnas.local"
+        return "my-gmnas"
+
+
+def hostname():
+    return hostbase() + ".local"
+
+
+def set_hostname(name):
+    """Set the system hostname so the unit is reachable at <name>.local (mDNS)."""
+    subprocess.run(["hostnamectl", "set-hostname", name], check=False)
+    try:
+        with open("/etc/hosts") as f:
+            lines = f.readlines()
+        out, found = [], False
+        for ln in lines:
+            if ln.startswith("127.0.1.1"):
+                out.append(f"127.0.1.1\t{name}\n"); found = True
+            else:
+                out.append(ln)
+        if not found:
+            out.append(f"127.0.1.1\t{name}\n")
+        with open("/etc/hosts", "w") as f:
+            f.writelines(out)
+    except OSError:
+        pass
+    subprocess.run(["systemctl", "restart", "avahi-daemon"], check=False)
 
 
 def seed_version():
@@ -531,6 +561,7 @@ def index():
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=pw_not_set,
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
+        hostbase=hostbase(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(),
@@ -606,6 +637,7 @@ def create_account():
     user = request.form.get("username", "").strip()
     pw = request.form.get("pw", "")
     pw2 = request.form.get("pw2", "")
+    dev = request.form.get("hostname", "").strip().lower()
     # Linux username rules: start with a letter/underscore, then lowercase
     # letters/digits/-/_, max 32 chars total.
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
@@ -616,17 +648,30 @@ def create_account():
         return redirect("/?cls=err&msg=Password must be at least 8 characters.")
     if pw != pw2:
         return redirect("/?cls=err&msg=Passwords do not match.")
+    if dev and not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?", dev):
+        return redirect("/?cls=err&msg=Invalid device name: lowercase letters, digits and hyphens.")
     # Create the admin account (sudo-capable, real shell, home dir).
     r = subprocess.run(["useradd", "-m", "-s", "/bin/bash", "-G", "sudo", user])
     if r.returncode != 0:
         return redirect("/?cls=err&msg=Could not create the account.")
     if subprocess.run(["chpasswd"], input=f"{user}:{pw}", text=True).returncode != 0:
         return redirect("/?cls=err&msg=Account created but setting the password failed.")
+    # Name the unit (so it's reachable at <name>.local — distinguishes units).
+    renamed = bool(dev and dev != hostbase())
+    if renamed:
+        set_hostname(dev)
     try:
         os.remove(PW_FLAG)   # b1 flow done — Cockpit is now usable
     except FileNotFoundError:
         pass
-    return redirect(f"/?msg=Admin account '{escape(user)}' created. Sign in to Cockpit with it.")
+    msg = f"Admin account '{escape(user)}' created. Sign in to Cockpit with it."
+    if renamed:
+        # avahi just restarted — redirect via the IP so the reload always works,
+        # and tell the user the new .local name to bookmark.
+        ip = box_ip()
+        target = f"http://{ip}" if ip else "/"
+        return redirect(f"{target}/?msg=Admin '{escape(user)}' created. Your gm-nas is now '{escape(dev)}.local'.")
+    return redirect(f"/?msg={msg}")
 
 
 @app.route("/password", methods=["POST"])
