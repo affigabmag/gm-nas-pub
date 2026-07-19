@@ -33,18 +33,22 @@ log "flag=$FLAG  wifi_connect=$WIFI_CONNECT  ui=$UI_DIR"
 # reconfigured from a phone. The user may power-cycle freely; every boot
 # re-evaluates connectivity.
 # -------------------------------------------------------------------------
-log "waiting for NetworkManager + autoconnect of any saved WiFi (up to ~60s)..."
+# Decision is based on WIFI specifically — a wired tether/Ethernet (used during
+# install) must NOT count as "provisioned", or the setup AP never appears.
+wifi_connected() {
+    nmcli -t -f TYPE,STATE device status 2>/dev/null | grep -q '^wifi:connected'
+}
+log "waiting for a saved WiFi to auto-connect (up to ~60s)..."
 CONNECTED=no
 for i in $(seq 1 12); do
-    st="$(nmcli -t -f STATE g 2>/dev/null)"
-    if [ "$st" = "connected" ]; then CONNECTED=yes; break; fi
-    log "  [$i/12] connectivity=$st — waiting 5s for a saved network..."
+    if wifi_connected; then CONNECTED=yes; break; fi
+    log "  [$i/12] no active WiFi yet — waiting 5s..."
     sleep 5
 done
 log "devices: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
 
 if [ "$CONNECTED" = yes ]; then
-    log "network is UP -> normal boot (mark provisioned), no wizard"
+    log "WiFi is UP -> normal boot (mark provisioned), no wizard"
     mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
     exit 0
 fi
