@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.56.20260719124915"   # bump when this menu changes
+MENU_VER="01.57.20260719132811"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -31,7 +31,7 @@ header() {
     printf "${CY}%s${R}${EL}\n" "$RULE"
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
     printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
-    printf "  ${GY}Seed${R} ${CY}%s${R}   ${GY}Menu${R} ${CY}v%s${R}${EL}\n" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
+    printf "  ${GY}Build${R} ${B}${GR}%s${R}   ${DIM}seed %s · menu v%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
     printf "${CY}%s${R}${EL}\n" "$RULE"
 }
 

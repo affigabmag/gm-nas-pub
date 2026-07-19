@@ -32,7 +32,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.03.20260719131810"   # bump on every welcome-app change
+WELCOME_VER = "01.04.20260719132811"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -137,7 +137,7 @@ PAGE = """<!doctype html>
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
-    <span class="ip sep">· seed {{ version }} · app {{ appver }}</span>
+    <span class="ip sep">· build <b>{{ build }}</b> · seed {{ version }} · app {{ appver }}</span>
   </div>
   {% if not password_not_set %}<button type="button" id="gearBtn" class="gear" title="Manage NAS" aria-label="Manage NAS">⚙</button>{% endif %}
  </header>
@@ -439,6 +439,15 @@ def seed_version():
         return "?"
 
 
+def build_version():
+    """One overall build id (from the repo VERSION file); bumps on any change."""
+    try:
+        with open("/etc/gmnas-build-version") as f:
+            return f.read().strip() or "?"
+    except OSError:
+        return "?"
+
+
 def box_ip():
     try:
         out = subprocess.check_output(["hostname", "-I"], text=True).split()
@@ -689,7 +698,7 @@ def index():
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
-        busy=busy, version=seed_version(), appver=WELCOME_VER,
+        busy=busy, version=seed_version(), appver=WELCOME_VER, build=build_version(),
         online=have_internet(), ip=box_ip(),
         msg=request.args.get("msg"), msgcls=request.args.get("cls", "ok"))
 

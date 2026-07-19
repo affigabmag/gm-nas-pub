@@ -29,6 +29,7 @@ get() {  # get <url-path> <dest>
     else echo "  FAILED  $2" >&2; fi
 }
 
+get VERSION                         /etc/gmnas-build-version
 get welcome/app.py                  /usr/local/lib/gmnas-welcome/app.py
 get files/gmnas-welcome.service     /etc/systemd/system/gmnas-welcome.service
 get files/ttyd.service              /etc/systemd/system/ttyd.service
