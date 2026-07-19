@@ -36,6 +36,10 @@ get files/ttyd.service              /etc/systemd/system/ttyd.service
 get files/firstboot-wifi.sh         /usr/local/sbin/firstboot-wifi.sh
 get files/homenas-firstboot.service /etc/systemd/system/homenas-firstboot.service
 get ui/index.html                   /usr/local/lib/wifi-connect/ui/index.html
+# Captive-portal probe files: make phones auto-open the setup page on connect.
+for f in generate_204 gen_204 hotspot-detect.html ncsi.txt connecttest.txt redirect success.txt; do
+    get "ui/$f" "/usr/local/lib/wifi-connect/ui/$f"
+done
 
 # Refresh the helper commands too (so the gmnas menu updates itself).
 for h in gmnas gm-usb gm-update join-wifi reset-setup gm-install-all; do
