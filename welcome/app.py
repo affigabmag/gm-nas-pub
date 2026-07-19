@@ -45,11 +45,11 @@ PAGE = """<!doctype html>
  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   background:var(--bg);color:var(--fg);padding:16px}
  .wrap{max-width:720px;margin:0 auto}
- header{text-align:center;margin:24px 0}
- .logo{width:56px;height:56px;margin:0 auto 12px;border-radius:14px;
+ header{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;margin:24px 0}
+ .logo{width:44px;height:44px;margin:0;border-radius:12px;flex:none;
   background:linear-gradient(135deg,var(--accent),#6366f1);display:flex;align-items:center;
   justify-content:center;font-size:26px;font-weight:700;color:var(--accent-fg)}
- h1{font-size:22px;margin:0} .sub{color:var(--muted);margin:4px 0 0}
+ h1{font-size:20px;margin:0} .sub{color:var(--muted);margin:0}
  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-top:16px}
  .card h2{font-size:16px;margin:0 0 12px}
  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
@@ -68,14 +68,14 @@ PAGE = """<!doctype html>
   cursor:pointer;font-size:18px;padding:6px 8px;line-height:1;opacity:.7;width:auto;margin:0}
  .eye:hover,.eye.on{opacity:1}
  .ver{text-align:center;color:var(--muted);font-size:11px;margin:22px 0 8px}
- .netstrip{display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;
+ .netstrip{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:13px;
   padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--border)}
  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
  .dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
  .dot.off{background:var(--danger)}
  .dot.warn{background:var(--warn)}
  .netstrip .ip{color:var(--muted);font-size:12px}
- .hver{color:var(--muted);font-size:11px;margin-top:8px}
+ .hver{color:var(--muted);font-size:11px;margin:0}
  .danger-btn{background:var(--danger);color:#3a0a0a}
  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;
   align-items:center;justify-content:center;padding:20px;z-index:50}
