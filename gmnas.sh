@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.52.20260719113543"   # bump when this menu changes
+MENU_VER="01.53.20260719113746"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -68,7 +68,7 @@ render() {
             item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         fi
     done
-    printf "${EL}\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${DIM}or press a letter${R} ${GR}❯${R} \033[J"
+    printf "${EL}\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${GR}Esc/q${R} ${DIM}quit${R}   ${DIM}or a letter${R} ${GR}❯${R} \033[J"
 }
 
 # clear the screen ONCE on entry; render() then redraws in place each keystroke
@@ -80,6 +80,7 @@ while true; do
     case "$k" in
         $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
         $'\e[B'|$'\eOB') SEL=$(( (SEL + 1) % NUM )); continue ;;
+        $'\e') echo; exit 0 ;;      # bare Esc -> quit (same as q)
         "")  c="${KEYS[$SEL]}" ;;   # Enter -> run the highlighted item
         *)   c="$k" ;;              # letter -> run it directly
     esac
