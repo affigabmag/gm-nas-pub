@@ -228,6 +228,60 @@
       var card = document.querySelector('.card');
       function panel(html) { card.innerHTML = html; }
 
+      // ---- Active gm-nas discovery -----------------------------------------
+      // After the box reboots onto the home WiFi it can't tell the phone its new
+      // IP (the AP is gone). So the phone hunts for it: image-probe every LAN IP
+      // for the box's marker (/gmnas-id.png). First one that loads IS the gm-nas.
+      function findNas(btn, msg) {
+        var done = false;
+        function found(ip) {
+          if (done) return; done = true;
+          btn.href = 'http://' + ip;
+          btn.textContent = 'Open your gm-nas (' + ip + ') ↗';
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+          if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b>.';
+        }
+        function probe(ip) {
+          if (done) return;
+          var img = new Image();
+          var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; }, 3000);
+          img.onload = function () { clearTimeout(to); found(ip); };
+          img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
+        }
+        // Which /24 to scan? Try WebRTC to learn the phone's own subnet; if the
+        // browser hides it, fall back to the most common home ranges.
+        function scan(nets) {
+          var seen = {}; nets = nets.filter(function (n) { return n && !seen[n] && (seen[n] = 1); });
+          if (!nets.length) nets = ['192.168.0', '192.168.1', '192.168.68', '192.168.86', '192.168.31', '10.0.0'];
+          // simple concurrency pool so phones/browsers don't choke
+          var jobs = [], i, n;
+          for (n = 0; n < nets.length; n++) for (i = 1; i <= 254; i++) jobs.push(nets[n] + '.' + i);
+          var idx = 0, POOL = 40;
+          function next() { if (done || idx >= jobs.length) return; probe(jobs[idx++]); setTimeout(next, 12); }
+          for (var k = 0; k < POOL; k++) next();
+          // keep scanning in rounds until found (box may still be booting)
+          var round = setInterval(function () {
+            if (done) { clearInterval(round); return; }
+            if (idx >= jobs.length) { idx = 0; }  // rescan
+          }, 1000);
+        }
+        var nets = [], pc;
+        try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { pc = null; }
+        if (!pc) { scan([]); return; }
+        try {
+          pc.createDataChannel('d');
+          pc.onicecandidate = function (e) {
+            if (!e || !e.candidate) return;
+            var m = /(\d{1,3}(?:\.\d{1,3}){3})/.exec(e.candidate.candidate);
+            if (m && /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(m[1]))
+              nets.push(m[1].replace(/\.\d+$/, ''));
+          };
+          pc.createOffer().then(function (o) { pc.setLocalDescription(o); });
+        } catch (e) {}
+        setTimeout(function () { try { pc.close(); } catch (e) {} scan(nets); }, 1500);
+      }
+
       // Step 1 — preloader while the device joins the network.
       panel(
         '<div style="text-align:center;padding:14px 4px">' +
@@ -269,24 +323,25 @@
               '<b style="color:var(--fg)">IP address</b> shown on the gm-nas screen instead.' +
             '</div>' +
             '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 4:00</div>' +
-            '<div style="color:var(--muted);font-size:12px;margin-top:12px">' +
-              'Already back on home WiFi? Skip the wait:</div>' +
+            '<div id="scanmsg" style="color:var(--muted);font-size:12px;margin-top:12px">' +
+              'Reconnect your phone to your home WiFi — I\'ll find your gm-nas automatically…</div>' +
             '<a id="openbtn" href="http://my-gmnas.local" ' +
                'style="display:block;margin-top:8px;background:var(--ok);color:#04331b;font-weight:700;' +
-                      'text-decoration:none;border-radius:10px;padding:14px;font-size:16px">Go to home ↗</a>' +
+                      'text-decoration:none;border-radius:10px;padding:14px;font-size:16px;' +
+                      'opacity:.45;pointer-events:none">Searching… ↗</a>' +
           '</div>'
         );
         var left = 240, el = document.getElementById('cd');
         var openbtn = document.getElementById('openbtn');
+        // Kick off active network discovery: scan the LAN for the gm-nas marker
+        // and enable the button (pointed at its real IP) the moment it answers.
+        findNas(openbtn, document.getElementById('scanmsg'));
         var iv = setInterval(function () {
           left--;
           if (left <= 0) {
             clearInterval(iv);
             el.style.color = 'var(--ok)';
-            el.innerHTML = 'Ready! Reconnect your phone to home WiFi, then tap below (iPhone/PC) or open the IP on Android:';
-            openbtn.style.display = 'block';
-            // NOTE: no auto-redirect — .local fails on Android and would just
-            // land on an error page. Let the user tap when they're ready.
+            el.innerHTML = 'Ready! If the button is still searching, open the gm-nas IP shown on its screen.';
             return;
           }
           var m = Math.floor(left / 60), s = left % 60;

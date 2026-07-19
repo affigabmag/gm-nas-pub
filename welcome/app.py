@@ -19,6 +19,7 @@
 import os
 import re
 import json
+import base64
 import shutil
 import subprocess
 from html import escape
@@ -807,6 +808,19 @@ def status():
     ts = tailscale_state()
     return jsonify(online=have_internet(), ip=box_ip(),
                    tailscale=ts, tailscale_ip=(tailscale_ip() if ts == "up" else ""))
+
+
+# Discovery marker ("implanted id"): the setup portal image-probes candidate
+# LAN IPs for this exact 1x1 PNG to find the box after it reboots onto WiFi.
+_MARKER_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
+
+@app.route("/gmnas-id.png")
+def gmnas_id():
+    return app.response_class(_MARKER_PNG, mimetype="image/png",
+                              headers={"Access-Control-Allow-Origin": "*",
+                                       "Cache-Control": "no-store"})
 
 
 RESERVED_USERS = {"root", "gmnas", "gmadmin", "daemon", "bin", "sys", "sync",
