@@ -75,6 +75,7 @@ PAGE = """<!doctype html>
  .dot.off{background:var(--danger)}
  .dot.warn{background:var(--warn)}
  .netstrip .ip{color:var(--muted);font-size:12px}
+ .hver{color:var(--muted);font-size:11px;margin-top:8px}
  .danger-btn{background:var(--danger);color:#3a0a0a}
  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;
   align-items:center;justify-content:center;padding:20px;z-index:50}
@@ -105,7 +106,8 @@ PAGE = """<!doctype html>
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
-  </div></header>
+  </div>
+  <div class="hver">{{ version }}</div></header>
 
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
