@@ -32,7 +32,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.02.20260719131247"   # bump on every welcome-app change
+WELCOME_VER = "01.03.20260719131810"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -494,12 +494,24 @@ def cockpit_state():
 def tailscale_state():
     if not shutil.which("tailscale"):
         return "busy" if is_installing("setup") else "off"
-    # installed — are we logged in / up?
+    # Installed — is THIS node still a live member of the tailnet?
+    #
+    # We can't trust BackendState alone: a node that was DELETED from the
+    # tailnet (or whose key expired) keeps BackendState "Running" while it can
+    # no longer reach the coordination server. The authoritative signal is
+    # Self.Online — it goes false the moment the node is deleted/logged out.
     try:
-        out = subprocess.check_output(["tailscale", "status"], text=True,
+        out = subprocess.check_output(["tailscale", "status", "--json"], text=True,
                                       stderr=subprocess.STDOUT, timeout=6)
-        if "Logged out" in out or "NeedsLogin" in out or "Stopped" in out:
+        d = json.loads(out)
+        if d.get("BackendState") in ("NeedsLogin", "Stopped", "NoState", "Starting"):
             return "ready"
+        self_node = d.get("Self") or {}
+        if not self_node.get("Online", False):
+            return "ready"          # deleted / expired / offline from control
+        for h in (d.get("Health") or []):
+            if "logged out" in str(h).lower():
+                return "ready"
         return "up"
     except Exception:
         return "ready"
