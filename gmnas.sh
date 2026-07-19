@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.55.20260719124414"   # bump when this menu changes
+MENU_VER="01.56.20260719124915"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -63,7 +63,7 @@ render() {
     for ((i=0; i<NUM; i++)); do
         [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}"
         if [ "$i" -eq "$SEL" ]; then
-            printf "  ${HL}${B} %s  %-26s %-40s ${R}${EL}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
+            printf "${HL}${B}   %s  %-26s %-40s${EL}${R}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         else
             item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         fi
