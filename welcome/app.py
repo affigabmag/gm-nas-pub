@@ -632,6 +632,9 @@ def ensure_default_shares():
     have = {s["path"] for s in existing}
     for s in DEFAULT_SHARES:
         _prep_folder(s["path"])
+    # Handy starter subfolders inside the media share (not separate shares).
+    for sub in ("media/pictures", "media/video"):
+        _prep_folder(os.path.join(STORAGE, sub))
     merged = existing + [dict(s) for s in DEFAULT_SHARES if s["path"] not in have]
     save_shares(merged)
     try:
