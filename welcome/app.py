@@ -866,11 +866,12 @@ def create_share():
             return redirect("/?cls=err&msg=Pick a folder, or type a new subfolder name.")
         rel = folder
     name = rel.replace("/", "-").lower()
-    shares = load_shares()
-    if any(s["name"] == name for s in shares):
-        return redirect(f"/?cls=err&msg=Share '{escape(name)}' already exists.")
     path = os.path.join(STORAGE, rel)
-    _prep_folder(path)
+    # (a) never create a share that already exists — by name OR by folder path.
+    shares = load_shares()
+    if any(s["name"] == name or s.get("path") == path for s in shares):
+        return redirect(f"/?cls=err&msg='{escape(rel)}' is already shared.")
+    _prep_folder(path)   # (c) creates the folder (and any parents) if new
     shares.append({"name": name, "path": path, "label": rel})
     save_shares(shares)
     return redirect(f"/?msg=Share '{escape(name)}' created.")
