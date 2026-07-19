@@ -264,7 +264,9 @@
               'Your gm-nas is joining <b style="color:var(--fg)">' + ssid + '</b> and is <b style="color:var(--fg)">restarting now</b>.<br><br>' +
               'The <b style="color:var(--fg)">GMNas-Setup</b> network switches off — ' +
               'reconnect your phone to your <b style="color:var(--fg)">home WiFi</b>.<br>' +
-              'Then find your gm-nas at <b style="color:var(--fg)">my-gmnas.local</b>.' +
+              'Then open <b style="color:var(--fg)">my-gmnas.local</b> (iPhone / PC).<br>' +
+              '<b style="color:var(--fg)">Android:</b> .local may not work — open the ' +
+              '<b style="color:var(--fg)">IP address</b> shown on the gm-nas screen instead.' +
             '</div>' +
             '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 4:00</div>' +
             '<div style="color:var(--muted);font-size:12px;margin-top:12px">' +
@@ -281,10 +283,10 @@
           if (left <= 0) {
             clearInterval(iv);
             el.style.color = 'var(--ok)';
-            el.innerHTML = 'Ready! Reconnect your phone to home WiFi, then:';
+            el.innerHTML = 'Ready! Reconnect your phone to home WiFi, then tap below (iPhone/PC) or open the IP on Android:';
             openbtn.style.display = 'block';
-            // Auto-open the welcome app (works once the phone is back on home WiFi).
-            setTimeout(function () { window.location.href = 'http://my-gmnas.local'; }, 2000);
+            // NOTE: no auto-redirect — .local fails on Android and would just
+            // land on an error page. Let the user tap when they're ready.
             return;
           }
           var m = Math.floor(left / 60), s = left % 60;
