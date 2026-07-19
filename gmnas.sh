@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.57.20260719132811"   # bump when this menu changes
+MENU_VER="01.58.20260719201942"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -21,6 +21,20 @@ fi
 H() { hostname 2>/dev/null; }
 IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
 pause() { echo; read -rp "Press Enter to continue…" _; }
+# Run a gm-nas helper command, falling back to /usr/local/bin/<name> only if it
+# genuinely isn't on PATH -- NOT on any non-zero exit from a real run. The old
+# "sudo X || sudo bash /usr/local/bin/X" pattern re-ran the WHOLE command a
+# second time whenever X succeeded but happened to exit non-zero (e.g. its last
+# internal step returned 1) -- for reset-setup that meant restarting the setup
+# AP mid-flight, racing itself and tearing the AP down within seconds.
+run_helper() {
+    local name="$1"; shift
+    if command -v "$name" >/dev/null 2>&1; then
+        sudo "$name" "$@"
+    else
+        sudo bash "/usr/local/bin/$name" "$@"
+    fi
+}
 run() { echo "+ $*"; "$@"; }
 
 RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -96,7 +110,7 @@ while true; do
         f|F) btop ;;
         g|G) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
-           sudo join-wifi "$s" "$p" 2>/dev/null || sudo bash /usr/local/bin/join-wifi "$s" "$p"
+           run_helper join-wifi "$s" "$p"
            echo
            echo "A reboot is required to leave AP mode and connect to '$s'."
            echo "Reboot now? [y/N]"
@@ -106,7 +120,7 @@ while true; do
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
-             sudo reset-setup 2>/dev/null || sudo bash /usr/local/bin/reset-setup
+             run_helper reset-setup
              echo
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
@@ -124,10 +138,10 @@ while true; do
            echo "  Terminal : http://$h:7681"; pause ;;
         j|J) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
            echo "restarted."; pause ;;
-        k|K) sudo gm-install-all 2>/dev/null || sudo bash /usr/local/bin/gm-install-all; pause ;;
-        l|L) sudo gm-update 2>/dev/null || sudo bash /usr/local/bin/gm-update; pause ;;
-        m|M) sudo gm-usb mount 2>/dev/null || sudo bash /usr/local/bin/gm-usb mount; pause ;;
-        n|N) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
+        k|K) run_helper gm-install-all; pause ;;
+        l|L) run_helper gm-update; pause ;;
+        m|M) run_helper gm-usb mount; pause ;;
+        n|N) run_helper gm-usb apply; pause ;;
         o|O) echo "Type 'exit' to return to the menu."; bash ;;
         r|R) printf "${YL}Reboot the box now? [y/N] ${R}"; read -rsn1 yn; echo
              if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo reboot; else echo "cancelled"; pause; fi ;;
