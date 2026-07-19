@@ -103,11 +103,12 @@ PAGE = """<!doctype html>
  .modal-actions{display:flex;gap:12px;margin-top:22px}
  .modal-actions>*{flex:1;margin:0}
  .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
- .shares{margin-top:16px;display:flex;flex-wrap:wrap;gap:10px;max-height:280px;overflow-y:auto;padding:2px}
- .shrow{flex:1 1 240px;min-width:0;position:relative;display:flex;flex-direction:column;gap:2px;
-  padding:10px 40px 10px 12px;border:1px solid var(--border);border-radius:10px;background:#0b1220}
- .shname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .shpath{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .shares{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:8px;max-height:280px;overflow-y:auto;padding:2px}
+ .shrow{min-width:0;position:relative;display:flex;flex-direction:column;gap:1px;
+  padding:8px 34px 8px 10px;border:1px solid var(--border);border-radius:9px;background:#0b1220}
+ .shname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .shpath{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .shdel{margin:0;position:absolute;top:8px;right:8px}
  .shdel button{margin:0;width:auto;padding:6px 11px;background:transparent;border:1px solid var(--border);
   color:var(--danger);border-radius:8px;font-size:13px;cursor:pointer;line-height:1}
