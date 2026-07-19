@@ -188,7 +188,6 @@ PAGE = """<!doctype html>
   <button type="button" id="resetBtn" class="danger-btn">Reset WiFi setup</button>
  </div>
 
- <div class="ver">gm-nas &bull; {{ version }}</div>
 </div>
 
 <div class="modal-bg" id="resetModal">
