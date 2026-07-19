@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.50.20260719112958"   # bump when this menu changes
+MENU_VER="01.51.20260719113401"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -13,8 +13,9 @@ if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
     CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
     MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
     HL=$'\e[48;5;30m\e[38;5;231m'   # highlight: dark cyan bg, bright white text
+    EL=$'\e[K'                       # erase to end of line (flicker-free redraw)
 else
-    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=
+    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=; EL=
 fi
 
 H() { hostname 2>/dev/null; }
@@ -25,20 +26,19 @@ run() { echo "+ $*"; "$@"; }
 RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 header() {
-    clear 2>/dev/null || true
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
-    printf "${CY}%s${R}\n" "$RULE"
-    printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b\n" "$prov"
-    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}\n" "$(H)" "$ip"
-    printf "  ${GY}Seed${R} ${CY}%s${R}   ${GY}Menu${R} ${CY}v%s${R}\n" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
-    printf "${CY}%s${R}\n" "$RULE"
+    printf "${CY}%s${R}${EL}\n" "$RULE"
+    printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
+    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip"
+    printf "  ${GY}Seed${R} ${CY}%s${R}   ${GY}Menu${R} ${CY}v%s${R}${EL}\n" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
+    printf "${CY}%s${R}${EL}\n" "$RULE"
 }
 
 # item <key> <title> <desc>
-item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}\n" "$1" "$2" "$3"; }
+item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$2" "$3"; }
 # sec <label>
-sec()  { printf "\n ${MG}${B}%s${R}\n" "$1"; }
+sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
 KEYS=(   a b c d e f g h i j k l m n o r p q )
@@ -57,19 +57,22 @@ NUM=${#KEYS[@]}
 SEL=0
 
 render() {
+    printf '\033[H'          # cursor home — redraw in place (no clear = no flash)
     header
     local i
     for ((i=0; i<NUM; i++)); do
         [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}"
         if [ "$i" -eq "$SEL" ]; then
-            printf "  ${HL}${B} %s  %-26s %-40s ${R}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
+            printf "  ${HL}${B} %s  %-26s %-40s ${R}${EL}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         else
             item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         fi
     done
-    printf "\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${DIM}or press a letter${R} ${GR}❯${R} "
+    printf "${EL}\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${DIM}or press a letter${R} ${GR}❯${R} \033[J"
 }
 
+# clear the screen ONCE on entry; render() then redraws in place each keystroke
+printf '\033[2J\033[H'
 while true; do
     render
     IFS= read -rsn1 k
