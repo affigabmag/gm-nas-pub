@@ -259,12 +259,14 @@
           for (n = 0; n < nets.length; n++) for (i = 1; i <= 254; i++) jobs.push(nets[n] + '.' + i);
           var idx = 0, POOL = 40;
           function next() { if (done || idx >= jobs.length) return; probe(jobs[idx++]); setTimeout(next, 12); }
-          for (var k = 0; k < POOL; k++) next();
-          // keep scanning in rounds until found (box may still be booting)
+          function startPass() { idx = 0; for (var k = 0; k < POOL; k++) next(); }
+          startPass();
+          // The box takes ~1-2 min to reboot, so one pass alone usually finds
+          // nothing (nobody's answering yet). Re-run full passes until found.
           var round = setInterval(function () {
             if (done) { clearInterval(round); return; }
-            if (idx >= jobs.length) { idx = 0; }  // rescan
-          }, 1000);
+            startPass();
+          }, 4000);
         }
         var nets = [], pc;
         try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { pc = null; }
