@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.35.20260719075051"   # bump when this menu changes
+MENU_VER="01.36.20260719080317"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -61,7 +61,7 @@ while true; do
     item n "Apply Ventoy edits" "offline update, no reinstall"
     sec "SHELL & POWER"
     item o "Open a shell"       ""
-    printf "   ${B}${YL}p${R}  ${WH}Reboot${R}     ${B}${YL}q${R}  ${WH}Power off${R}     ${B}${RD}r${R}  ${WH}Quit${R}\n"
+    printf "   ${B}${YL}r${R}  ${WH}Reboot${R}     ${B}${YL}p${R}  ${WH}Power off${R}     ${B}${RD}q${R}  ${WH}Quit${R}\n"
     printf "\n ${GR}Choose${R} ${DIM}(single key)${R} ${GR}❯${R} "
     read -rsn1 c; echo
     case "$c" in
@@ -108,11 +108,11 @@ while true; do
         m|M) sudo gm-usb mount 2>/dev/null || sudo bash /usr/local/bin/gm-usb mount; pause ;;
         n|N) sudo gm-usb apply 2>/dev/null || sudo bash /usr/local/bin/gm-usb apply; pause ;;
         o|O) echo "Type 'exit' to return to the menu."; bash ;;
-        p|P) printf "${YL}Reboot the box now? [y/N] ${R}"; read -rsn1 yn; echo
+        r|R) printf "${YL}Reboot the box now? [y/N] ${R}"; read -rsn1 yn; echo
              if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo reboot; else echo "cancelled"; pause; fi ;;
-        q|Q) printf "${RD}Power OFF the box? It will NOT come back without pressing the physical power button. [y/N] ${R}"; read -rsn1 yn; echo
+        p|P) printf "${RD}Power OFF the box? It will NOT come back without pressing the physical power button. [y/N] ${R}"; read -rsn1 yn; echo
              if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo poweroff; else echo "cancelled"; pause; fi ;;
-        r|R) exit 0 ;;
+        q|Q) exit 0 ;;
         *) ;;
     esac
 done
