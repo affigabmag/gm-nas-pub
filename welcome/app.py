@@ -18,6 +18,7 @@
 # ============================================================================
 import os
 import re
+import time
 import json
 import base64
 import shutil
@@ -393,17 +394,41 @@ def admin_username():
 def set_smb_password(user, pw):
     """Register/update the account in Samba's password DB with the same password
     so the end user can open the shares from Windows with their own login
-    (no insecure-guest needed). No-op if Samba isn't installed yet."""
+    (no insecure-guest needed). No-op if Samba isn't installed yet.
+
+    Retries once: right after boot/install, smbd's passdb backend can briefly
+    not be ready yet, and smbpasswd fails silently otherwise (subprocess.run
+    doesn't raise on a non-zero exit -- a prior version of this function never
+    checked the return code, so a failed registration looked identical to a
+    successful one).
+    """
     if not samba_installed():
         return
     smbpasswd = shutil.which("smbpasswd") or "/usr/bin/smbpasswd"
+    r = None
+    for attempt in range(2):
+        try:
+            # -s: read pw from stdin (twice); -a: add if new.
+            r = subprocess.run([smbpasswd, "-s", "-a", user], input=f"{pw}\n{pw}\n",
+                               text=True, capture_output=True)
+        except Exception as e:
+            r = None
+            _log_smb_failure(user, f"exception: {e}")
+        if r is not None and r.returncode == 0:
+            subprocess.run([smbpasswd, "-e", user], capture_output=True)
+            return
+        if attempt == 0:
+            time.sleep(2)
+    if r is not None:
+        _log_smb_failure(user, f"rc={r.returncode} stderr={r.stderr!r}")
+
+
+def _log_smb_failure(user, detail):
     try:
-        # -s: read pw from stdin (twice); -a: add if new; then -e: enable.
-        subprocess.run([smbpasswd, "-s", "-a", user], input=f"{pw}\n{pw}\n",
-                       text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run([smbpasswd, "-e", user],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(os.path.join(LOG_DIR, "smbpasswd.log"), "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {user}: {detail}\n")
+    except OSError:
         pass
 
 
