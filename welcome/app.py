@@ -208,20 +208,19 @@ PAGE = """<!doctype html>
  <div class="card"><h2>File shares</h2>
   {% if not samba %}<p class="hint">Setting up file sharing… shares appear once Samba finishes installing.</p>{% endif %}
   <form method="post" action="/share">
-   <label>Folder to share</label>
+   <label>Folder</label>
    <select id="folderSel" name="folder">
-     <option value="" disabled selected>Choose a folder…</option>
+     <option value="">/ (storage root)</option>
      {% for f in folders %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
-     <option value="__new__">➕ Create new folder…</option>
    </select>
-   <div id="newFolderWrap" style="display:none">
-     <label>New folder name</label>
-     <input id="newFolder" name="newname" pattern="[a-z0-9_\\-]+" autocapitalize="none"
-            placeholder="e.g. family-photos">
-   </div>
+   <label>New subfolder name <span style="opacity:.6">(optional)</span></label>
+   <input id="newFolder" name="newname" pattern="[a-z0-9_\\-]+" autocapitalize="none"
+          placeholder="leave empty to share the folder above">
    <button type="submit">Create share</button>
   </form>
-  <p class="hint">Folders live under {{ storage }} and are shared over your home network (Samba).</p>
+  <p class="hint">Pick a folder to share it. To make a new folder, pick its parent above and
+   type a name — it's created inside that parent (e.g. <b>media</b> + <b>family</b> → <b>media/family</b>).
+   Everything lives under {{ storage }}, shared over your home network (Samba).</p>
   <div class="shares">
   {% for s in shares %}
     <div class="shrow">
@@ -283,17 +282,6 @@ PAGE = """<!doctype html>
      location.reload();
  }, 5000);
  {% endif %}
- // Share folder dropdown: reveal the "new folder" field when chosen.
- (function(){
-   var sel=document.getElementById('folderSel'), wrap=document.getElementById('newFolderWrap'),
-       inp=document.getElementById('newFolder');
-   if(!sel) return;
-   sel.addEventListener('change', function(){
-     var isNew = sel.value === '__new__';
-     wrap.style.display = isNew ? 'block' : 'none';
-     if(inp){ inp.required = isNew; if(isNew) inp.focus(); }
-   });
- })();
  // Reset modal (custom confirm dialog).
  (function(){
    var b=document.getElementById('resetBtn'), m=document.getElementById('resetModal'),
@@ -550,11 +538,15 @@ def ensure_default_shares():
 
 
 def available_folders():
-    """Folders under /srv/storage (up to 3 levels deep) that aren't shared yet."""
+    """Every directory under /srv/storage, up to 3 levels deep.
+
+    Includes already-shared folders: they're valid *parents* to create a new
+    subfolder inside (e.g. pick 'media' and add 'family'). The share handler
+    rejects re-sharing one that's already shared.
+    """
     out = []
     if not os.path.isdir(STORAGE):
         return out
-    shared = {s["path"] for s in load_shares()}
 
     def walk(abspath, rel, depth):
         try:
@@ -568,8 +560,7 @@ def available_folders():
             if not os.path.isdir(ap):
                 continue
             rp = f"{rel}/{name}" if rel else name
-            if ap not in shared:
-                out.append(rp)
+            out.append(rp)
             if depth < 3:
                 walk(ap, rp, depth + 1)
 
@@ -775,16 +766,21 @@ def set_password():
 
 @app.route("/share", methods=["POST"])
 def create_share():
-    folder = request.form.get("folder", "").strip()
+    folder = request.form.get("folder", "").strip().strip("/")   # selected parent ("" = root)
     newname = request.form.get("newname", "").strip().lower()
-    if folder == "__new__" or (not folder and newname):
-        rel = newname
-        if not re.fullmatch(r"[a-z0-9_\-]+", rel or ""):
-            return redirect("/?cls=err&msg=Invalid folder name: lowercase, digits, - and _.")
+    # Validate the parent (may be empty = storage root); no "..", no leading /.
+    if folder and (not re.fullmatch(r"[a-z0-9_\-/]+", folder) or ".." in folder):
+        return redirect("/?cls=err&msg=Invalid folder.")
+    if newname:
+        # Create a new subfolder inside the selected parent.
+        if not re.fullmatch(r"[a-z0-9_\-]+", newname):
+            return redirect("/?cls=err&msg=Invalid subfolder name: lowercase, digits, - and _.")
+        rel = f"{folder}/{newname}" if folder else newname
     else:
+        # Share the selected folder itself.
+        if not folder:
+            return redirect("/?cls=err&msg=Pick a folder, or type a new subfolder name.")
         rel = folder
-        if not rel or not re.fullmatch(r"[a-z0-9_\-/]+", rel):
-            return redirect("/?cls=err&msg=Choose a folder to share.")
     name = rel.replace("/", "-").lower()
     shares = load_shares()
     if any(s["name"] == name for s in shares):
