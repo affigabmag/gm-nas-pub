@@ -175,7 +175,7 @@ PAGE = """<!doctype html>
   <div class="app">
    <span class="name">Cockpit</span>
    <span class="grow"><span class="desc">Web admin: system, storage, logs, updates</span></span>
-   {% if cockpit == 'ready' %}<a class="linkbtn" href="https://{{ host }}:9090" target="_blank">Open ↗</a>
+   {% if cockpit == 'ready' %}<a class="linkbtn svclink" data-proto="https" data-port="9090" href="https://{{ host }}:9090" target="_blank">Open ↗</a>
    {% elif cockpit == 'busy' %}<span class="badge b-busy">Installing…</span>
    {% else %}
      <form class="inline" method="post" action="/install/cockpit"><button>Install</button></form>
@@ -203,8 +203,8 @@ PAGE = """<!doctype html>
 
  <div class="card"><h2>Manage</h2>
   <div class="links">
-   <a href="https://{{ host }}:9090" target="_blank">Cockpit admin ↗</a>
-   <a href="http://{{ host }}:7681" target="_blank">Terminal ↗</a>
+   <a class="svclink" data-proto="https" data-port="9090" href="https://{{ host }}:9090" target="_blank">Cockpit admin ↗</a>
+   <a class="svclink" data-proto="http" data-port="7681" href="http://{{ host }}:7681" target="_blank">Terminal ↗</a>
   </div>
   <p class="hint">Cockpit: system, storage, logs, updates. Terminal: a shell in your browser.</p>
  </div>
@@ -323,6 +323,14 @@ PAGE = """<!doctype html>
      location.reload();
  }, 5000);
  {% endif %}
+ // Point Cockpit/Terminal links at the SAME host you're using now (IP, .local,
+ // or Tailscale) — the baked-in .local name doesn't resolve on Windows/Android.
+ (function(){
+   var h = location.hostname;
+   document.querySelectorAll('.svclink').forEach(function(a){
+     a.href = a.dataset.proto + '://' + h + ':' + a.dataset.port;
+   });
+ })();
  // Manage NAS panel (gear) + Reset confirm dialog.
  (function(){
    var g=document.getElementById('gearBtn'),
