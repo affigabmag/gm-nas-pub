@@ -38,7 +38,6 @@ LOG_DIR = "/var/log/gm-nas"
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{% if busy %}<meta http-equiv="refresh" content="5">{% endif %}
 <title>gm-nas</title>
 <style>
  :root{--bg:#0f172a;--card:#1e293b;--fg:#f1f5f9;--muted:#94a3b8;--accent:#38bdf8;
@@ -216,6 +215,16 @@ PAGE = """<!doctype html>
      btn.title = show ? 'Hide password' : 'Show password';
    });
  });
+ // Install-progress refresh — reload every 5s to update app badges, but ONLY
+ // while no text field is focused, so typing is never interrupted/wiped.
+ {% if busy %}
+ setInterval(function(){
+   var a = document.activeElement, t = a ? a.tagName : '';
+   var open = document.getElementById('resetModal');
+   if (t !== 'INPUT' && t !== 'TEXTAREA' && !(open && open.classList.contains('open')))
+     location.reload();
+ }, 5000);
+ {% endif %}
  // Reset modal (custom confirm dialog).
  (function(){
    var b=document.getElementById('resetBtn'), m=document.getElementById('resetModal'),
@@ -398,19 +407,20 @@ def index():
     #    one-time sign-in link. The END USER clicks it and logs into THEIR OWN
     #    Tailscale account — no auth key is baked into the box. Once they sign
     #    in, this box appears in their tailnet.
+    pw_not_set = os.path.exists(PW_FLAG)
     cockpit = cockpit_state()
     tailscale = tailscale_state()
-    # Kick off the ordered install chain until everything is done: Cockpit
-    # installed AND Tailscale connected. While `tailscale up` waits for the
-    # user's sign-in, the 'setup' lock is held so this won't re-trigger.
+    # Kick off the ordered install chain (Cockpit -> ttyd -> Tailscale) only
+    # AFTER the admin account exists. Starting it earlier turns on the 5s
+    # progress-refresh, which would wipe the account form while it's being typed.
     done = cockpit == "ready" and tailscale == "up"
-    if have_internet() and not done and not is_installing("setup"):
+    if have_internet() and not pw_not_set and not done and not is_installing("setup"):
         start_install("setup", SETUP_CMD)
 
     busy = is_installing("setup")
     return render_template_string(
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
-        password_not_set=os.path.exists(PW_FLAG),
+        password_not_set=pw_not_set,
         shares=list_shares(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
