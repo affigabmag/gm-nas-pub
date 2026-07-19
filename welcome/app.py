@@ -31,6 +31,7 @@ PW_FLAG = "/etc/homenas/password-not-set"
 ADMIN_USER = "gmnas"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
+WELCOME_VER = "01.01.20260719130743"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -127,7 +128,7 @@ PAGE = """<!doctype html>
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
-    <span class="ip sep">· {{ version }}</span>
+    <span class="ip sep">· seed {{ version }} · app {{ appver }}</span>
   </div></header>
 
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
@@ -152,17 +153,6 @@ PAGE = """<!doctype html>
    <div class="pass-wrap"><input type="password" name="pw2" class="pw" required minlength="8">
     <button type="button" class="eye" aria-label="Show password">👁</button></div>
    <button type="submit">Create admin account</button>
-  </form></div>
- {% endif %}
-
- {% if not password_not_set %}
- <div class="card"><h2>Device name</h2>
-  <form method="post" action="/rename">
-   <input name="hostname" value="{{ hostbase }}" required autocapitalize="none" autocomplete="off"
-          pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?">
-   <div class="hint">How this unit appears on your network: <b>&lt;name&gt;.local</b>.
-    Change it if you have more than one gm-nas.</div>
-   <button type="submit">Rename device</button>
   </form></div>
  {% endif %}
 
@@ -622,7 +612,7 @@ def index():
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
-        busy=busy, version=seed_version(),
+        busy=busy, version=seed_version(), appver=WELCOME_VER,
         online=have_internet(), ip=box_ip(),
         msg=request.args.get("msg"), msgcls=request.args.get("cls", "ok"))
 
@@ -730,20 +720,6 @@ def create_account():
         target = f"http://{ip}" if ip else "/"
         return redirect(f"{target}/?msg=Admin '{escape(user)}' created. Your gm-nas is now '{escape(dev)}.local'.")
     return redirect(f"/?msg={msg}")
-
-
-@app.route("/rename", methods=["POST"])
-def rename_device():
-    dev = request.form.get("hostname", "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?", dev):
-        return redirect("/?cls=err&msg=Invalid device name: lowercase letters, digits and hyphens.")
-    if dev == hostbase():
-        return redirect("/?msg=Device name unchanged.")
-    set_hostname(dev)
-    # avahi just restarted — redirect via IP so the reload always works.
-    ip = box_ip()
-    target = f"http://{ip}" if ip else "/"
-    return redirect(f"{target}/?msg=Your gm-nas is now '{escape(dev)}.local'.")
 
 
 @app.route("/password", methods=["POST"])
