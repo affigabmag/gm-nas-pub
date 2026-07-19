@@ -31,7 +31,7 @@ header() {
     printf "${CY}%s${R}${EL}\n" "$RULE"
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
     printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
-    printf "  ${GY}Build${R} ${B}${GR}%s${R}   ${DIM}seed %s · menu v%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
+    printf "  ${GY}Version${R} ${B}${GR}%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
     printf "${CY}%s${R}${EL}\n" "$RULE"
 }
 
