@@ -381,6 +381,23 @@ def admin_username():
     return ADMIN_USER
 
 
+def set_smb_password(user, pw):
+    """Register/update the account in Samba's password DB with the same password
+    so the end user can open the shares from Windows with their own login
+    (no insecure-guest needed). No-op if Samba isn't installed yet."""
+    if not samba_installed():
+        return
+    smbpasswd = shutil.which("smbpasswd") or "/usr/bin/smbpasswd"
+    try:
+        # -s: read pw from stdin (twice); -a: add if new; then -e: enable.
+        subprocess.run([smbpasswd, "-s", "-a", user], input=f"{pw}\n{pw}\n",
+                       text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([smbpasswd, "-e", user],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
 def active_ssid():
     """Currently connected WiFi SSID (empty if none / wired / AP mode)."""
     try:
@@ -821,6 +838,8 @@ def create_account():
             f.write(user + "\n")
     except OSError:
         pass
+    # Give this account a matching Samba login so it can open the shares.
+    set_smb_password(user, pw)
     # Name the unit (so it's reachable at <name>.local — distinguishes units).
     renamed = bool(dev and dev != hostbase())
     if renamed:
@@ -864,6 +883,7 @@ def set_password():
     r = subprocess.run(["chpasswd"], input=f"{admin}:{pw}", text=True)
     if r.returncode != 0:
         return redirect("/?cls=err&msg=Could not set password.")
+    set_smb_password(admin, pw)   # keep the Samba login in sync
     try:
         os.remove(PW_FLAG)
     except FileNotFoundError:
