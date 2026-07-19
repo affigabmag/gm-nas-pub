@@ -38,20 +38,33 @@ log "flag=$FLAG  wifi_connect=$WIFI_CONNECT  ui=$UI_DIR"
 wifi_connected() {
     nmcli -t -f TYPE,STATE device status 2>/dev/null | grep -q '^wifi:connected'
 }
-log "waiting for a saved WiFi to auto-connect (up to ~60s)..."
-CONNECTED=no
-for i in $(seq 1 12); do
-    if wifi_connected; then CONNECTED=yes; break; fi
-    log "  [$i/12] no active WiFi yet — waiting 5s..."
-    sleep 5
-done
-log "devices: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
+saved_wifi() {
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' | grep -q .
+}
 
-if [ "$CONNECTED" = yes ]; then
-    log "WiFi is UP -> normal boot (mark provisioned), no wizard"
-    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
-    exit 0
+if saved_wifi; then
+    # A home network is configured — give it up to ~60s to auto-connect before
+    # falling back to the setup AP (tolerates brief router outages).
+    log "saved WiFi found — waiting up to ~60s for it to connect..."
+    CONNECTED=no
+    for i in $(seq 1 12); do
+        if wifi_connected; then CONNECTED=yes; break; fi
+        log "  [$i/12] no active WiFi yet — waiting 5s..."
+        sleep 5
+    done
+    if [ "$CONNECTED" = yes ]; then
+        log "WiFi is UP -> normal boot (mark provisioned), no wizard"
+        mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        exit 0
+    fi
+    log "saved WiFi did not connect -> launching setup AP"
+else
+    # Fresh box / no home network yet — launch the setup AP immediately
+    # (no point waiting 60s for a network that doesn't exist).
+    log "no saved WiFi -> launching setup AP right away"
 fi
+log "devices: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
 
 log "NO active network after wait -> (re)running the first-time WiFi wizard"
 # Offline: treat the box as needing setup again so the welcome app (gated on
