@@ -103,8 +103,9 @@ PAGE = """<!doctype html>
  .modal-actions{display:flex;gap:12px;margin-top:22px}
  .modal-actions>*{flex:1;margin:0}
  .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
- .shares{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+ .shares{margin-top:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
   gap:8px;max-height:280px;overflow-y:auto;padding:2px}
+ @media(max-width:430px){.shares{grid-template-columns:1fr}}
  .shrow{min-width:0;position:relative;display:flex;flex-direction:column;gap:1px;
   padding:8px 34px 8px 10px;border:1px solid var(--border);border-radius:9px;background:#0b1220}
  .shname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
