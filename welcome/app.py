@@ -103,11 +103,12 @@ PAGE = """<!doctype html>
  .modal-actions{display:flex;gap:12px;margin-top:22px}
  .modal-actions>*{flex:1;margin:0}
  .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
- .shares{margin-top:16px}
- .shrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
- .shname{font-weight:600;flex:0 0 auto}
- .shpath{color:var(--muted);font-size:12px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
- .shdel{margin:0;flex:0 0 auto}
+ .shares{margin-top:16px;display:flex;flex-wrap:wrap;gap:10px;max-height:280px;overflow-y:auto;padding:2px}
+ .shrow{flex:1 1 240px;min-width:0;position:relative;display:flex;flex-direction:column;gap:2px;
+  padding:10px 40px 10px 12px;border:1px solid var(--border);border-radius:10px;background:#0b1220}
+ .shname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .shpath{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .shdel{margin:0;position:absolute;top:8px;right:8px}
  .shdel button{margin:0;width:auto;padding:6px 11px;background:transparent;border:1px solid var(--border);
   color:var(--danger);border-radius:8px;font-size:13px;cursor:pointer;line-height:1}
  .shdel button:hover{background:rgba(248,113,113,.14);border-color:var(--danger)}
