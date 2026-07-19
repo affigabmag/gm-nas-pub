@@ -18,6 +18,7 @@
 # ============================================================================
 import os
 import re
+import json
 import shutil
 import subprocess
 from html import escape
@@ -30,6 +31,16 @@ PW_FLAG = "/etc/homenas/password-not-set"
 ADMIN_USER = "gmnas"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
+SHARES_JSON = "/etc/homenas/shares.json"
+
+# Created once at first setup. The whole storage partition ("/") is the main
+# share; plus documents and a media/{pictures,video} tree.
+DEFAULT_SHARES = [
+    {"name": "storage",   "path": "/srv/storage",               "label": "/ (all storage)"},
+    {"name": "documents", "path": "/srv/storage/documents",     "label": "documents"},
+    {"name": "pictures",  "path": "/srv/storage/media/pictures", "label": "media / pictures"},
+    {"name": "video",     "path": "/srv/storage/media/video",   "label": "media / video"},
+]
 
 # Background-install bookkeeping (markers + logs).
 RUN_DIR = "/run/gmnas"
@@ -89,6 +100,14 @@ PAGE = """<!doctype html>
  .modal-actions{display:flex;gap:12px;margin-top:22px}
  .modal-actions>*{flex:1;margin:0}
  .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
+ .shares{margin-top:16px}
+ .shrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+ .shname{font-weight:600;flex:0 0 auto}
+ .shpath{color:var(--muted);font-size:12px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+ .shdel{margin:0;flex:0 0 auto}
+ .shdel button{margin:0;width:auto;padding:6px 11px;background:transparent;border:1px solid var(--border);
+  color:var(--danger);border-radius:8px;font-size:13px;cursor:pointer;line-height:1}
+ .shdel button:hover{background:rgba(248,113,113,.14);border-color:var(--danger)}
  .app{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
  .app:first-of-type{border-top:none}
  .app .name{font-weight:600;flex:0 0 auto} .app .desc{color:var(--muted);font-size:12px}
@@ -170,16 +189,27 @@ PAGE = """<!doctype html>
  </div>
 
  <div class="card"><h2>File shares</h2>
-  {% if shares %}
-  <table>{% for s in shares %}<tr><td>📁 {{ s }}</td>
-   <td style="text-align:right"><code>\\\\{{ host }}\\{{ s }}</code></td></tr>{% endfor %}</table>
-  {% else %}<p class="hint">No shares yet. Create one below.</p>{% endif %}
+  {% if not samba %}<p class="hint">Setting up file sharing… shares appear once Samba finishes installing.</p>{% endif %}
   <form method="post" action="/share">
    <label>New shared folder name</label>
-   <input name="name" placeholder="e.g. family-photos" required pattern="[A-Za-z0-9_\\-]+">
+   <input name="name" placeholder="e.g. family-photos" required pattern="[a-z0-9_\\-]+" autocapitalize="none">
    <button type="submit">Create share</button>
   </form>
   <p class="hint">Folders live under {{ storage }} and are shared over your home network (Samba).</p>
+  <div class="shares">
+  {% for s in shares %}
+    <div class="shrow">
+      <span class="shname">📁 {{ s.label or s.name }}</span>
+      <code class="shpath">\\\\{{ host }}\\{{ s.name }}</code>
+      <form method="post" action="/share/delete" class="shdel">
+        <input type="hidden" name="name" value="{{ s.name }}">
+        <button type="submit" title="Remove this share (files are kept)" aria-label="Remove">✕</button>
+      </form>
+    </div>
+  {% else %}
+    <p class="hint">No shares yet.</p>
+  {% endfor %}
+  </div>
  </div>
 
  <div class="card"><h2>Reset</h2>
@@ -355,28 +385,60 @@ def have_internet():
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
-def list_shares():
-    if not os.path.isdir(STORAGE):
+def samba_installed():
+    return shutil.which("smbd") is not None or os.path.exists("/usr/sbin/smbd")
+
+
+def load_shares():
+    try:
+        with open(SHARES_JSON) as f:
+            return json.load(f)
+    except (OSError, ValueError):
         return []
-    return sorted(d for d in os.listdir(STORAGE)
-                  if os.path.isdir(os.path.join(STORAGE, d)))
 
 
-def add_samba_share(name, path):
-    block = (f"\n[{name}]\n   path = {path}\n   browseable = yes\n"
-             f"   read only = no\n   guest ok = no\n   valid users = {ADMIN_USER}\n")
+def _write_smb(shares):
+    """Regenerate the gm-nas managed block of smb.conf from the share list."""
     conf = ""
     if os.path.exists(SMB_CONF):
         with open(SMB_CONF) as f:
             conf = f.read()
-    if f"[{name}]" in conf:
-        return
-    if SMB_MARK not in conf:
-        conf += "\n" + SMB_MARK + "\n"
-    conf += block
+    # Allow easy (guest) access from the home LAN; writes act as the admin user.
+    if "map to guest" not in conf and "[global]" in conf:
+        conf = conf.replace("[global]", "[global]\n   map to guest = Bad User", 1)
+    if SMB_MARK in conf:                       # drop the old managed block (kept at EOF)
+        conf = conf.split(SMB_MARK, 1)[0].rstrip() + "\n"
+    block = SMB_MARK + "\n"
+    for s in shares:
+        block += (f"\n[{s['name']}]\n   path = {s['path']}\n   browseable = yes\n"
+                  f"   read only = no\n   guest ok = yes\n   force user = {ADMIN_USER}\n"
+                  f"   create mask = 0664\n   directory mask = 2775\n")
     with open(SMB_CONF, "w") as f:
-        f.write(conf)
-    subprocess.run(["systemctl", "reload-or-restart", "smbd"], check=False)
+        f.write(conf.rstrip() + "\n\n" + block)
+    if samba_installed():
+        subprocess.run(["systemctl", "reload-or-restart", "smbd"], check=False)
+
+
+def save_shares(shares):
+    os.makedirs(os.path.dirname(SHARES_JSON), exist_ok=True)
+    with open(SHARES_JSON, "w") as f:
+        json.dump(shares, f)
+    _write_smb(shares)
+
+
+def _prep_folder(path):
+    os.makedirs(path, exist_ok=True)
+    subprocess.run(["chown", f"root:{ADMIN_USER}", path], check=False)
+    subprocess.run(["chmod", "2775", path], check=False)
+
+
+def ensure_default_shares():
+    """One-time: create the default folder tree + shares (whole storage + tree)."""
+    if os.path.exists(SHARES_JSON):
+        return
+    for s in DEFAULT_SHARES:
+        _prep_folder(s["path"])
+    save_shares([dict(s) for s in DEFAULT_SHARES])
 
 
 # Shell one-liners for the background installers.
@@ -395,10 +457,13 @@ TTYD_CMD = (
     "curl -fsSL https://raw.githubusercontent.com/affigabmag/gm-nas-pub/main/files/ttyd.service "
     "-o /etc/systemd/system/ttyd.service && systemctl daemon-reload && "
     "systemctl enable --now ttyd.service")
+# Samba for file sharing (the File-shares card + default shares need it).
+SAMBA_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get install -y samba; "
+             "systemctl enable --now smbd nmbd")
 # ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
 # under a single 'setup' lock so two apt processes never collide on the dpkg
 # lock. `tailscale up` blocks until the end user signs in, holding the lock.
-SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, TAILSCALE_CMD, TS_UP_CMD])
+SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, TAILSCALE_CMD, TS_UP_CMD])
 
 
 @app.route("/")
@@ -420,10 +485,13 @@ def index():
         start_install("setup", SETUP_CMD)
 
     busy = is_installing("setup")
+    # Once Samba is installed, seed the default shares (whole storage + tree).
+    if samba_installed():
+        ensure_default_shares()
     return render_template_string(
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=pw_not_set,
-        shares=list_shares(),
+        shares=load_shares(), samba=samba_installed(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(),
@@ -542,15 +610,25 @@ def set_password():
 
 @app.route("/share", methods=["POST"])
 def create_share():
-    name = request.form.get("name", "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", name or ""):
-        return redirect("/?cls=err&msg=Invalid folder name.")
+    name = request.form.get("name", "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9_\-]+", name or ""):
+        return redirect("/?cls=err&msg=Invalid name: lowercase letters, digits, - and _.")
+    shares = load_shares()
+    if any(s["name"] == name for s in shares):
+        return redirect(f"/?cls=err&msg=Share '{escape(name)}' already exists.")
     path = os.path.join(STORAGE, name)
-    os.makedirs(path, exist_ok=True)
-    subprocess.run(["chown", f"root:{ADMIN_USER}", path], check=False)
-    subprocess.run(["chmod", "2775", path], check=False)
-    add_samba_share(name, path)
+    _prep_folder(path)
+    shares.append({"name": name, "path": path, "label": name})
+    save_shares(shares)
     return redirect(f"/?msg=Share '{escape(name)}' created.")
+
+
+@app.route("/share/delete", methods=["POST"])
+def delete_share():
+    name = request.form.get("name", "").strip()
+    shares = [s for s in load_shares() if s["name"] != name]
+    save_shares(shares)   # removes the Samba share; the folder + files are kept
+    return redirect(f"/?msg=Share '{escape(name)}' removed (files kept).")
 
 
 if __name__ == "__main__":
