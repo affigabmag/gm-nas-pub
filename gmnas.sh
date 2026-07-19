@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.59.20260719221037"   # bump when this menu changes
+MENU_VER="01.60.20260719221619"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -59,18 +59,19 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f g h i j k l m n o r p q )
+KEYS=(   a b c d e f g h w i j k l m n o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" \
-         "Connect to WiFi" "First-time wizard" "Web links" "Restart web svcs" "Install ALL" \
+         "Connect to WiFi" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Install ALL" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
          "Reboot" "Power off" "Quit" )
 DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
          "firstboot / join-wifi / reset / etc." "btop" "join-wifi" "broadcast GMNas-Setup, set up from phone" \
-         "Welcome / Cockpit / Terminal" "welcome + terminal" "Cockpit/Tailscale/Samba/NFS/ttyd/welcome" \
+         "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" \
+         "Cockpit/Tailscale/Samba/NFS/ttyd/welcome" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
          "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
-declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [8]="WEB & SERVICES" \
-                       [10]="INSTALL & UPDATE" [14]="SHELL & POWER" )
+declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [9]="WEB & SERVICES" \
+                       [11]="INSTALL & UPDATE" [15]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -135,6 +136,24 @@ while true; do
              echo "   3) Pick your home WiFi + password, tap Connect"
              echo
              echo "   The gm-nas joins it, then reboots on the new WiFi."
+             echo "  =========================================="
+           else echo "cancelled."; fi
+           pause ;;
+        w|W) printf "${RD}${B}Factory reset${R} — this removes the current admin account, its\n"
+           echo "Samba login, and all share definitions (defaults reseed fresh)."
+           echo "Files under /srv/storage are KEPT. The gm-nas will then replay the"
+           echo "WHOLE first-boot flow: WiFi setup AP -> welcome wizard -> shares."
+           printf "${RD}Continue? [y/N]${R} "
+           read -rsn1 yn; echo
+           if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
+             run_helper factory-reset
+             echo
+             echo "  ============ NOW ON YOUR PHONE ============"
+             echo "   1) WiFi:     GMNas-Setup"
+             echo "      Password: gmnas2026"
+             echo "   2) Browser:  http://192.168.42.1"
+             echo "   3) Pick your home WiFi + password, tap Connect"
+             echo "   4) Complete the welcome wizard as a brand-new gm-nas"
              echo "  =========================================="
            else echo "cancelled."; fi
            pause ;;
