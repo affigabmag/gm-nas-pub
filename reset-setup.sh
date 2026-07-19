@@ -29,6 +29,16 @@ for dev in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{pr
     log "  disconnected $dev"
 done
 
+# CRITICAL: delete the saved home-WiFi profile(s), not just disconnect. A saved
+# profile keeps autoconnect=yes (set when it was first joined), so NetworkManager
+# keeps trying to reconnect it in the background — racing wifi-connect for the
+# single radio and tearing the GMNas-Setup AP down within seconds of it starting.
+nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+    | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' \
+    | while read -r c; do
+        [ -n "$c" ] && { nmcli connection delete "$c" 2>/dev/null && log "  deleted saved WiFi profile: $c"; }
+      done
+
 log "restarting first-boot setup service (launches GMNas-Setup AP)"
 systemctl restart homenas-firstboot.service 2>/dev/null || true
 sleep 2
