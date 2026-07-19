@@ -5,14 +5,14 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.54.20260719122520"   # bump when this menu changes
+MENU_VER="01.55.20260719124414"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
     R=$'\e[0m'; B=$'\e[1m'; DIM=$'\e[2m'
     CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
     MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
-    HL=$'\e[48;2;136;136;136m\e[38;5;16m'   # highlight: #888888 gray bg, black text
+    HL=$'\e[48;2;102;102;102m\e[38;2;255;255;255m'   # highlight: #666666 gray bg, #ffffff white text
     EL=$'\e[K'                       # erase to end of line (flicker-free redraw)
 else
     R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=; EL=
