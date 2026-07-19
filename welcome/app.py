@@ -563,11 +563,19 @@ def _write_smb(shares):
     if os.path.exists(SMB_CONF):
         with open(SMB_CONF) as f:
             conf = f.read()
-    # Allow easy (guest) access from the home LAN; writes act as the admin user.
-    if "map to guest" not in conf and "[global]" in conf:
-        conf = conf.replace("[global]", "[global]\n   map to guest = Bad User", 1)
-    if SMB_MARK in conf:                       # drop the old managed block (kept at EOF)
+    # Drop our previous managed block before rewriting it.
+    if SMB_MARK in conf:
         conf = conf.split(SMB_MARK, 1)[0].rstrip() + "\n"
+    # Guarantee a [global] that maps unknown users to guest — WITHOUT it the
+    # "guest ok" shares are unreachable (Samba defaults to map to guest = Never),
+    # so anonymous access from the home LAN is refused. Some minimal Samba
+    # installs ship no [global] at all, so add the whole section if missing.
+    if re.search(r"(?mi)^\s*\[global\]", conf):
+        if "map to guest" not in conf:
+            conf = re.sub(r"(?mi)^(\s*\[global\][^\n]*\n)",
+                          r"\1   map to guest = Bad User\n", conf, count=1)
+    else:
+        conf = "[global]\n   map to guest = Bad User\n\n" + conf
     block = SMB_MARK + "\n"
     for s in shares:
         block += (f"\n[{s['name']}]\n   path = {s['path']}\n   browseable = yes\n"
@@ -613,6 +621,18 @@ def ensure_default_shares():
         open(SHARES_SEEDED_FLAG, "w").close()
     except OSError:
         pass
+
+
+def ensure_smb_guest():
+    """Heal older boxes whose smb.conf was written without guest mapping, so
+    existing shares become anonymously reachable without recreating them."""
+    try:
+        with open(SMB_CONF) as f:
+            conf = f.read()
+    except OSError:
+        return
+    if "map to guest" not in conf:
+        _write_smb(load_shares())
 
 
 def available_folders():
@@ -693,6 +713,7 @@ def index():
     # Once Samba is installed, seed the default shares (whole storage + tree).
     if samba_installed():
         ensure_default_shares()
+        ensure_smb_guest()
     return render_template_string(
         PAGE, host=hostname(), admin=admin_username(), storage=STORAGE,
         password_not_set=pw_not_set,
