@@ -122,7 +122,8 @@ PAGE = """<!doctype html>
  form.inline{margin:0} form.inline button{margin:0;width:auto;padding:10px 14px;font-size:13px}
  a.linkbtn{display:inline-block;background:var(--accent);color:var(--accent-fg);font-weight:700;
   text-decoration:none;border-radius:8px;padding:10px 14px;font-size:13px}
- header{position:relative}
+ header{position:sticky;top:0;z-index:20;background:var(--bg);margin:0 0 4px;
+  padding:12px 0;border-bottom:1px solid var(--border)}
  .gear{position:absolute;top:0;right:0;margin:0;width:auto;padding:8px 11px;font-size:20px;
   line-height:1;background:var(--card);color:var(--muted);border:1px solid var(--border);border-radius:10px;cursor:pointer}
  .gear:hover{color:var(--fg)}
