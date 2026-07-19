@@ -191,8 +191,17 @@ PAGE = """<!doctype html>
  <div class="card"><h2>File shares</h2>
   {% if not samba %}<p class="hint">Setting up file sharing… shares appear once Samba finishes installing.</p>{% endif %}
   <form method="post" action="/share">
-   <label>New shared folder name</label>
-   <input name="name" placeholder="e.g. family-photos" required pattern="[a-z0-9_\\-]+" autocapitalize="none">
+   <label>Folder to share</label>
+   <select id="folderSel" name="folder">
+     <option value="" disabled selected>Choose a folder…</option>
+     {% for f in folders %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+     <option value="__new__">➕ Create new folder…</option>
+   </select>
+   <div id="newFolderWrap" style="display:none">
+     <label>New folder name</label>
+     <input id="newFolder" name="newname" pattern="[a-z0-9_\\-]+" autocapitalize="none"
+            placeholder="e.g. family-photos">
+   </div>
    <button type="submit">Create share</button>
   </form>
   <p class="hint">Folders live under {{ storage }} and are shared over your home network (Samba).</p>
@@ -257,6 +266,17 @@ PAGE = """<!doctype html>
      location.reload();
  }, 5000);
  {% endif %}
+ // Share folder dropdown: reveal the "new folder" field when chosen.
+ (function(){
+   var sel=document.getElementById('folderSel'), wrap=document.getElementById('newFolderWrap'),
+       inp=document.getElementById('newFolder');
+   if(!sel) return;
+   sel.addEventListener('change', function(){
+     var isNew = sel.value === '__new__';
+     wrap.style.display = isNew ? 'block' : 'none';
+     if(inp){ inp.required = isNew; if(isNew) inp.focus(); }
+   });
+ })();
  // Reset modal (custom confirm dialog).
  (function(){
    var b=document.getElementById('resetBtn'), m=document.getElementById('resetModal'),
@@ -441,6 +461,25 @@ def ensure_default_shares():
     save_shares([dict(s) for s in DEFAULT_SHARES])
 
 
+def available_folders():
+    """Folders under /srv/storage (2 levels deep) that aren't shared yet."""
+    out = []
+    if not os.path.isdir(STORAGE):
+        return out
+    shared = {s["path"] for s in load_shares()}
+    for top in sorted(os.listdir(STORAGE)):
+        tp = os.path.join(STORAGE, top)
+        if not os.path.isdir(tp) or top == "lost+found" or top.startswith("."):
+            continue
+        if tp not in shared:
+            out.append(top)
+        for sub in sorted(os.listdir(tp)):
+            sp = os.path.join(tp, sub)
+            if os.path.isdir(sp) and not sub.startswith(".") and sp not in shared:
+                out.append(f"{top}/{sub}")
+    return out
+
+
 # Shell one-liners for the background installers.
 COCKPIT_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get update; "
                "apt-get install -y cockpit; systemctl enable --now cockpit.socket")
@@ -491,7 +530,7 @@ def index():
     return render_template_string(
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=pw_not_set,
-        shares=load_shares(), samba=samba_installed(),
+        shares=load_shares(), samba=samba_installed(), folders=available_folders(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(),
@@ -610,15 +649,23 @@ def set_password():
 
 @app.route("/share", methods=["POST"])
 def create_share():
-    name = request.form.get("name", "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9_\-]+", name or ""):
-        return redirect("/?cls=err&msg=Invalid name: lowercase letters, digits, - and _.")
+    folder = request.form.get("folder", "").strip()
+    newname = request.form.get("newname", "").strip().lower()
+    if folder == "__new__" or (not folder and newname):
+        rel = newname
+        if not re.fullmatch(r"[a-z0-9_\-]+", rel or ""):
+            return redirect("/?cls=err&msg=Invalid folder name: lowercase, digits, - and _.")
+    else:
+        rel = folder
+        if not rel or not re.fullmatch(r"[a-z0-9_\-/]+", rel):
+            return redirect("/?cls=err&msg=Choose a folder to share.")
+    name = rel.replace("/", "-").lower()
     shares = load_shares()
     if any(s["name"] == name for s in shares):
         return redirect(f"/?cls=err&msg=Share '{escape(name)}' already exists.")
-    path = os.path.join(STORAGE, name)
+    path = os.path.join(STORAGE, rel)
     _prep_folder(path)
-    shares.append({"name": name, "path": path, "label": name})
+    shares.append({"name": name, "path": path, "label": rel})
     save_shares(shares)
     return redirect(f"/?msg=Share '{escape(name)}' created.")
 
