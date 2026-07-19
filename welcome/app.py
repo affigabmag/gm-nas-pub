@@ -550,21 +550,30 @@ def ensure_default_shares():
 
 
 def available_folders():
-    """Folders under /srv/storage (2 levels deep) that aren't shared yet."""
+    """Folders under /srv/storage (up to 3 levels deep) that aren't shared yet."""
     out = []
     if not os.path.isdir(STORAGE):
         return out
     shared = {s["path"] for s in load_shares()}
-    for top in sorted(os.listdir(STORAGE)):
-        tp = os.path.join(STORAGE, top)
-        if not os.path.isdir(tp) or top == "lost+found" or top.startswith("."):
-            continue
-        if tp not in shared:
-            out.append(top)
-        for sub in sorted(os.listdir(tp)):
-            sp = os.path.join(tp, sub)
-            if os.path.isdir(sp) and not sub.startswith(".") and sp not in shared:
-                out.append(f"{top}/{sub}")
+
+    def walk(abspath, rel, depth):
+        try:
+            entries = sorted(os.listdir(abspath))
+        except OSError:
+            return
+        for name in entries:
+            if name.startswith(".") or name == "lost+found":
+                continue
+            ap = os.path.join(abspath, name)
+            if not os.path.isdir(ap):
+                continue
+            rp = f"{rel}/{name}" if rel else name
+            if ap not in shared:
+                out.append(rp)
+            if depth < 3:
+                walk(ap, rp, depth + 1)
+
+    walk(STORAGE, "", 1)
     return out
 
 
