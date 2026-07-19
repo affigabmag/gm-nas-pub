@@ -12,7 +12,7 @@ if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
     R=$'\e[0m'; B=$'\e[1m'; DIM=$'\e[2m'
     CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
     MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
-    HL=$'\e[48;5;30m\e[38;5;231m'   # highlight: dark cyan bg, bright white text
+    HL=$'\e[48;2;170;170;170m\e[38;5;16m'   # highlight: #aaaaaa gray bg, black text
     EL=$'\e[K'                       # erase to end of line (flicker-free redraw)
 else
     R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=; EL=
@@ -30,7 +30,7 @@ header() {
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
     printf "${CY}%s${R}${EL}\n" "$RULE"
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
-    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip"
+    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
     printf "  ${GY}Seed${R} ${CY}%s${R}   ${GY}Menu${R} ${CY}v%s${R}${EL}\n" "$(cat /etc/gmnas-seed-version 2>/dev/null || echo '?')" "$MENU_VER"
     printf "${CY}%s${R}${EL}\n" "$RULE"
 }

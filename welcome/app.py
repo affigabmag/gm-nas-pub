@@ -32,6 +32,7 @@ ADMIN_USER = "gmnas"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
 SHARES_JSON = "/etc/homenas/shares.json"
+SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
 # Created once at first setup. The whole storage partition ("/") is the main
 # share; plus documents and a media/{pictures,video} tree.
@@ -139,7 +140,7 @@ PAGE = """<!doctype html>
    <input name="hostname" value="{{ hostbase }}" required autocapitalize="none" autocomplete="off"
           pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?">
    <div class="hint">How this unit appears on your network: <b>&lt;name&gt;.local</b>.
-    Use a unique name if you have more than one gm-nas.</div>
+    Suggested from your WiFi — edit it, or use a unique name if you have more than one gm-nas.</div>
    <label>Username</label>
    <input name="username" required pattern="[a-z_][a-z0-9_-]{0,31}" autocapitalize="none"
           autocomplete="off" placeholder="e.g. john">
@@ -151,6 +152,17 @@ PAGE = """<!doctype html>
    <div class="pass-wrap"><input type="password" name="pw2" class="pw" required minlength="8">
     <button type="button" class="eye" aria-label="Show password">👁</button></div>
    <button type="submit">Create admin account</button>
+  </form></div>
+ {% endif %}
+
+ {% if not password_not_set %}
+ <div class="card"><h2>Device name</h2>
+  <form method="post" action="/rename">
+   <input name="hostname" value="{{ hostbase }}" required autocapitalize="none" autocomplete="off"
+          pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?">
+   <div class="hint">How this unit appears on your network: <b>&lt;name&gt;.local</b>.
+    Change it if you have more than one gm-nas.</div>
+   <button type="submit">Rename device</button>
   </form></div>
  {% endif %}
 
@@ -323,6 +335,38 @@ def hostname():
     return hostbase() + ".local"
 
 
+def active_ssid():
+    """Currently connected WiFi SSID (empty if none / wired / AP mode)."""
+    try:
+        out = subprocess.check_output(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+            text=True, stderr=subprocess.DEVNULL, timeout=5)
+        for line in out.splitlines():
+            if line.startswith("yes:"):
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def suggested_hostname():
+    """Prefill for the Device name box: my-gmnas-<wifiname> when on WiFi.
+
+    Leaves an already-customized hostname untouched so re-opening the page
+    doesn't keep appending the SSID.
+    """
+    base = hostbase()
+    if base != "my-gmnas":
+        return base
+    ssid = active_ssid()
+    if not ssid:
+        return base
+    # sanitize to a valid DNS/hostname label
+    tag = re.sub(r"[^a-z0-9-]", "-", ssid.lower()).strip("-")
+    tag = re.sub(r"-+", "-", tag)
+    return f"{base}-{tag}" if tag else base
+
+
 def set_hostname(name):
     """Set the system hostname so the unit is reachable at <name>.local (mDNS)."""
     subprocess.run(["hostnamectl", "set-hostname", name], check=False)
@@ -483,12 +527,26 @@ def _prep_folder(path):
 
 
 def ensure_default_shares():
-    """One-time: create the default folder tree + shares (whole storage + tree)."""
-    if os.path.exists(SHARES_JSON):
+    """One-time: create the default folder tree + shares (whole storage + tree).
+
+    Seeds once, tracked by SHARES_SEEDED_FLAG (not by shares.json existing) so an
+    empty/partial shares.json written before Samba finished doesn't block seeding.
+    Merges with any shares already present and never resurrects after the one-time
+    seed, so intentional deletes stick.
+    """
+    if os.path.exists(SHARES_SEEDED_FLAG):
         return
+    existing = load_shares()
+    have = {s["path"] for s in existing}
     for s in DEFAULT_SHARES:
         _prep_folder(s["path"])
-    save_shares([dict(s) for s in DEFAULT_SHARES])
+    merged = existing + [dict(s) for s in DEFAULT_SHARES if s["path"] not in have]
+    save_shares(merged)
+    try:
+        os.makedirs(os.path.dirname(SHARES_SEEDED_FLAG), exist_ok=True)
+        open(SHARES_SEEDED_FLAG, "w").close()
+    except OSError:
+        pass
 
 
 def available_folders():
@@ -561,7 +619,7 @@ def index():
         PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
         password_not_set=pw_not_set,
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
-        hostbase=hostbase(),
+        hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(),
@@ -672,6 +730,20 @@ def create_account():
         target = f"http://{ip}" if ip else "/"
         return redirect(f"{target}/?msg=Admin '{escape(user)}' created. Your gm-nas is now '{escape(dev)}.local'.")
     return redirect(f"/?msg={msg}")
+
+
+@app.route("/rename", methods=["POST"])
+def rename_device():
+    dev = request.form.get("hostname", "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?", dev):
+        return redirect("/?cls=err&msg=Invalid device name: lowercase letters, digits and hyphens.")
+    if dev == hostbase():
+        return redirect("/?msg=Device name unchanged.")
+    set_hostname(dev)
+    # avahi just restarted — redirect via IP so the reload always works.
+    ip = box_ip()
+    target = f"http://{ip}" if ip else "/"
+    return redirect(f"{target}/?msg=Your gm-nas is now '{escape(dev)}.local'.")
 
 
 @app.route("/password", methods=["POST"])
