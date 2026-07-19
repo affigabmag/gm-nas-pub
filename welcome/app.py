@@ -28,10 +28,11 @@ app = Flask(__name__)
 
 STORAGE = "/srv/storage"
 PW_FLAG = "/etc/homenas/password-not-set"
-ADMIN_USER = "gmnas"
+ADMIN_USER = "gmnas"                       # fallback until the wizard creates one
+ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.01.20260719130743"   # bump on every welcome-app change
+WELCOME_VER = "01.02.20260719131247"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -121,6 +122,14 @@ PAGE = """<!doctype html>
  form.inline{margin:0} form.inline button{margin:0;width:auto;padding:10px 14px;font-size:13px}
  a.linkbtn{display:inline-block;background:var(--accent);color:var(--accent-fg);font-weight:700;
   text-decoration:none;border-radius:8px;padding:10px 14px;font-size:13px}
+ header{position:relative}
+ .gear{position:absolute;top:0;right:0;margin:0;width:auto;padding:8px 11px;font-size:20px;
+  line-height:1;background:var(--card);color:var(--muted);border:1px solid var(--border);border-radius:10px;cursor:pointer}
+ .gear:hover{color:var(--fg)}
+ .modal.manage{max-width:460px;text-align:left}
+ .msec{padding:16px 0;border-top:1px solid var(--border)}
+ .msec:first-of-type{border-top:none;padding-top:0}
+ .msec h4{margin:0 0 4px;font-size:15px;color:var(--fg)}
 </style></head><body><div class="wrap">
  <header><div class="logo"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#04263a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><circle cx="6.6" cy="7.5" r="0.9" fill="#04263a" stroke="none"/><circle cx="6.6" cy="16.5" r="0.9" fill="#04263a" stroke="none"/><line x1="9.5" y1="7.5" x2="17.5" y2="7.5"/><line x1="9.5" y1="16.5" x2="17.5" y2="16.5"/></svg></div><h1>Welcome to your gm-nas</h1>
   <p class="sub">{{ host }}</p>
@@ -129,7 +138,9 @@ PAGE = """<!doctype html>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
     <span class="ip sep">· seed {{ version }} · app {{ appver }}</span>
-  </div></header>
+  </div>
+  {% if not password_not_set %}<button type="button" id="gearBtn" class="gear" title="Manage NAS" aria-label="Manage NAS">⚙</button>{% endif %}
+ </header>
 
  {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
@@ -227,12 +238,47 @@ PAGE = """<!doctype html>
   </div>
  </div>
 
- <div class="card"><h2>Reset</h2>
-  <p class="hint">Start setup over — forget the current WiFi and go back to the
-   first-time setup screen. Your files and admin account are kept.</p>
-  <button type="button" id="resetBtn" class="danger-btn">Reset WiFi setup</button>
- </div>
 
+</div>
+
+<div class="modal-bg" id="manageModal">
+ <div class="modal manage">
+  <h3>Manage NAS</h3>
+
+  <div class="msec">
+   <h4>Device name</h4>
+   <p class="hint">Appears on your network as <b>&lt;name&gt;.local</b>.</p>
+   <form method="post" action="/rename">
+    <input name="hostname" value="{{ hostbase }}" required autocapitalize="none" autocomplete="off"
+           pattern="[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?">
+    <button type="submit">Rename &amp; apply</button>
+   </form>
+  </div>
+
+  <div class="msec">
+   <h4>Admin password</h4>
+   <p class="hint">Sign-in for Cockpit and admin tasks (user <b>{{ admin }}</b>).</p>
+   <form method="post" action="/password">
+    <label>New password</label>
+    <div class="pass-wrap"><input type="password" name="pw" class="pw" required minlength="8">
+     <button type="button" class="eye" aria-label="Show password">👁</button></div>
+    <label>Confirm password</label>
+    <div class="pass-wrap"><input type="password" name="pw2" class="pw" required minlength="8">
+     <button type="button" class="eye" aria-label="Show password">👁</button></div>
+    <button type="submit">Update password</button>
+   </form>
+  </div>
+
+  <div class="msec">
+   <h4>Reset</h4>
+   <p class="hint">Forget WiFi and return to first-time setup. Files &amp; account kept.</p>
+   <button type="button" id="resetOpen" class="danger-btn">Reset WiFi setup</button>
+  </div>
+
+  <div class="modal-actions">
+   <button type="button" class="btn-cancel" id="manageClose">Close</button>
+  </div>
+ </div>
 </div>
 
 <div class="modal-bg" id="resetModal">
@@ -267,19 +313,26 @@ PAGE = """<!doctype html>
  {% if busy %}
  setInterval(function(){
    var a = document.activeElement, t = a ? a.tagName : '';
-   var open = document.getElementById('resetModal');
-   if (t !== 'INPUT' && t !== 'TEXTAREA' && !(open && open.classList.contains('open')))
+   var rOpen = document.getElementById('resetModal');
+   var mOpen = document.getElementById('manageModal');
+   function isOpen(el){ return el && el.classList.contains('open'); }
+   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(rOpen) && !isOpen(mOpen))
      location.reload();
  }, 5000);
  {% endif %}
- // Reset modal (custom confirm dialog).
+ // Manage NAS panel (gear) + Reset confirm dialog.
  (function(){
-   var b=document.getElementById('resetBtn'), m=document.getElementById('resetModal'),
-       c=document.getElementById('resetCancel');
-   if(!b) return;
-   b.addEventListener('click', function(){ m.classList.add('open'); });
-   c.addEventListener('click', function(){ m.classList.remove('open'); });
-   m.addEventListener('click', function(e){ if(e.target===m) m.classList.remove('open'); });
+   var g=document.getElementById('gearBtn'),
+       mm=document.getElementById('manageModal'), mc=document.getElementById('manageClose'),
+       rm=document.getElementById('resetModal'), rc=document.getElementById('resetCancel'),
+       ro=document.getElementById('resetOpen');
+   function close(el){ if(el) el.classList.remove('open'); }
+   if(g&&mm){ g.addEventListener('click', function(){ mm.classList.add('open'); }); }
+   if(mc){ mc.addEventListener('click', function(){ close(mm); }); }
+   if(mm){ mm.addEventListener('click', function(e){ if(e.target===mm) close(mm); }); }
+   if(ro&&rm){ ro.addEventListener('click', function(){ close(mm); rm.classList.add('open'); }); }
+   if(rc){ rc.addEventListener('click', function(){ close(rm); }); }
+   if(rm){ rm.addEventListener('click', function(e){ if(e.target===rm) close(rm); }); }
  })();
  // Live connectivity heartbeat — polls /status every 5s and updates the badge,
  // the same way the Tailscale row shows Connected/Not.
@@ -311,6 +364,18 @@ def hostbase():
 
 def hostname():
     return hostbase() + ".local"
+
+
+def admin_username():
+    """The account the wizard created (Cockpit login); ADMIN_USER until then."""
+    try:
+        with open(ADMIN_USER_FILE) as f:
+            u = f.read().strip()
+            if u:
+                return u
+    except OSError:
+        pass
+    return ADMIN_USER
 
 
 def active_ssid():
@@ -606,7 +671,7 @@ def index():
     if samba_installed():
         ensure_default_shares()
     return render_template_string(
-        PAGE, host=hostname(), admin=ADMIN_USER, storage=STORAGE,
+        PAGE, host=hostname(), admin=admin_username(), storage=STORAGE,
         password_not_set=pw_not_set,
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
         hostbase=suggested_hostname(),
@@ -704,6 +769,13 @@ def create_account():
         return redirect("/?cls=err&msg=Could not create the account.")
     if subprocess.run(["chpasswd"], input=f"{user}:{pw}", text=True).returncode != 0:
         return redirect("/?cls=err&msg=Account created but setting the password failed.")
+    # Remember who the admin is, so "change password" later targets this account.
+    try:
+        os.makedirs(os.path.dirname(ADMIN_USER_FILE), exist_ok=True)
+        with open(ADMIN_USER_FILE, "w") as f:
+            f.write(user + "\n")
+    except OSError:
+        pass
     # Name the unit (so it's reachable at <name>.local — distinguishes units).
     renamed = bool(dev and dev != hostbase())
     if renamed:
@@ -722,6 +794,19 @@ def create_account():
     return redirect(f"/?msg={msg}")
 
 
+@app.route("/rename", methods=["POST"])
+def rename_device():
+    dev = request.form.get("hostname", "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?", dev):
+        return redirect("/?cls=err&msg=Invalid device name: lowercase letters, digits and hyphens.")
+    if dev == hostbase():
+        return redirect("/?msg=Device name unchanged.")
+    set_hostname(dev)
+    ip = box_ip()   # avahi just restarted — redirect via IP so the reload always works
+    target = f"http://{ip}" if ip else "/"
+    return redirect(f"{target}/?msg=Your gm-nas is now '{escape(dev)}.local'.")
+
+
 @app.route("/password", methods=["POST"])
 def set_password():
     pw = request.form.get("pw", "")
@@ -730,14 +815,15 @@ def set_password():
         return redirect("/?cls=err&msg=Password must be at least 8 characters.")
     if pw != pw2:
         return redirect("/?cls=err&msg=Passwords do not match.")
-    r = subprocess.run(["chpasswd"], input=f"{ADMIN_USER}:{pw}", text=True)
+    admin = admin_username()
+    r = subprocess.run(["chpasswd"], input=f"{admin}:{pw}", text=True)
     if r.returncode != 0:
         return redirect("/?cls=err&msg=Could not set password.")
     try:
         os.remove(PW_FLAG)
     except FileNotFoundError:
         pass
-    return redirect("/?msg=Password set. You can now sign in to Cockpit.")
+    return redirect(f"/?msg=Password updated for '{escape(admin)}'.")
 
 
 @app.route("/share", methods=["POST"])
