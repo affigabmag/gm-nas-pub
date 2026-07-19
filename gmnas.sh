@@ -5,15 +5,16 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.37.20260719084952"   # bump when this menu changes
+MENU_VER="01.38.20260719085441"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
     R=$'\e[0m'; B=$'\e[1m'; DIM=$'\e[2m'
     CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
     MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
+    HL=$'\e[48;5;44m\e[38;5;16m'   # highlight: cyan bg, dark text (arrow selection)
 else
-    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=
+    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=
 fi
 
 H() { hostname 2>/dev/null; }
@@ -39,31 +40,47 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}\n" "$1" "$2" "$
 # sec <label>
 sec()  { printf "\n ${MG}${B}%s${R}\n" "$1"; }
 
-while true; do
+# --- data-driven, arrow-navigable menu --------------------------------------
+KEYS=(   a b c d e f g h i j k l m n o r p q )
+TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" \
+         "Connect to WiFi" "First-time wizard" "Web links" "Restart web svcs" "Install ALL" \
+         "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
+         "Reboot" "Power off" "Quit" )
+DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
+         "firstboot / join-wifi / reset / etc." "btop" "join-wifi" "broadcast GMNas-Setup, set up from phone" \
+         "Welcome / Cockpit / Terminal" "welcome + terminal" "Cockpit/Tailscale/Samba/NFS/ttyd/welcome" \
+         "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
+         "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
+declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [8]="WEB & SERVICES" \
+                       [10]="INSTALL & UPDATE" [14]="SHELL & POWER" )
+NUM=${#KEYS[@]}
+SEL=0
+
+render() {
     header
-    sec "INFO & LOGS"
-    item a "Device info"        "login summary: IP, links, services"
-    item b "Status / diag"      "gm-debug"
-    item c "Setup log"          "the install/setup log"
-    item d "Install error log"  "subiquity debug"
-    item e "gm-nas logs"        "firstboot / join-wifi / reset / etc."
-    item f "System monitor"     "btop"
-    sec "NETWORK & SETUP"
-    item g "Connect to WiFi"    "join-wifi"
-    item h "First-time wizard"  "broadcast GMNas-Setup, set up from phone"
-    sec "WEB & SERVICES"
-    item i "Web links"          "Welcome / Cockpit / Terminal"
-    item j "Restart web svcs"   "welcome + terminal"
-    sec "INSTALL & UPDATE"
-    item k "Install ALL"        "Cockpit/Tailscale/Samba/NFS/ttyd/welcome"
-    item l "Update from GitHub" "gm-update, online"
-    item m "Mount & view files" "mount a USB drive and list files"
-    item n "Apply Ventoy edits" "offline update, no reinstall"
-    sec "SHELL & POWER"
-    item o "Open a shell"       ""
-    printf "   ${B}${YL}r${R}  ${WH}Reboot${R}     ${B}${YL}p${R}  ${WH}Power off${R}     ${B}${RD}q${R}  ${WH}Quit${R}\n"
-    printf "\n ${GR}Choose${R} ${DIM}(single key)${R} ${GR}❯${R} "
-    read -rsn1 c; echo
+    local i
+    for ((i=0; i<NUM; i++)); do
+        [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}"
+        if [ "$i" -eq "$SEL" ]; then
+            printf "  ${HL}${B} %s  %-26s %-40s ${R}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
+        else
+            item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
+        fi
+    done
+    printf "\n ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${DIM}or press a letter${R} ${GR}❯${R} "
+}
+
+while true; do
+    render
+    IFS= read -rsn1 k
+    if [ "$k" = $'\e' ]; then IFS= read -rsn2 -t 0.05 rest; k="$k$rest"; fi
+    case "$k" in
+        $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
+        $'\e[B'|$'\eOB') SEL=$(( (SEL + 1) % NUM )); continue ;;
+        "")  c="${KEYS[$SEL]}" ;;   # Enter -> run the highlighted item
+        *)   c="$k" ;;              # letter -> run it directly
+    esac
+    echo
     case "$c" in
         a|A) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
         b|B) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
