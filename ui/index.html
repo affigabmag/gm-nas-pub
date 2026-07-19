@@ -307,6 +307,17 @@
           probeCurrentSubnet(function () {});
           startPass();
         }, 4000);
+        // Exposed so a "Search again" button can force an immediate re-probe +
+        // pass right now, instead of waiting for the next automatic tick --
+        // useful right after the phone actually finishes switching WiFi.
+        return {
+          retryNow: function () {
+            if (done) return;
+            log('manual "search again" — re-probing subnet and scanning now');
+            probeCurrentSubnet(function () {});
+            startPass();
+          }
+        };
       }
 
       // Step 1 — preloader while the device joins the network.
@@ -361,8 +372,12 @@
               '<pre id="scanlog" style="display:none;margin-top:8px;max-height:160px;overflow:auto;' +
                    'background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:8px;' +
                    'font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-all"></pre>' +
-              '<button type="button" id="logCopy" style="display:none;margin-top:6px;width:auto;padding:8px 12px;' +
-                   'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Copy log</button>' +
+              '<div style="margin-top:6px;display:flex;gap:8px">' +
+                '<button type="button" id="logCopy" style="display:none;margin:0;width:auto;padding:8px 12px;' +
+                     'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Copy log</button>' +
+                '<button type="button" id="searchAgain" style="margin:0;width:auto;padding:8px 12px;' +
+                     'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Search again ↻</button>' +
+              '</div>' +
             '</div>' +
           '</div>'
         );
@@ -397,7 +412,15 @@
         }
         // Kick off active network discovery: scan the LAN for the gm-nas marker
         // and enable the button (pointed at its real IP) the moment it answers.
-        findNas(openbtn, document.getElementById('scanmsg'), scanLog);
+        var nasSearch = findNas(openbtn, document.getElementById('scanmsg'), scanLog);
+        var searchAgain = document.getElementById('searchAgain');
+        if (searchAgain) {
+          searchAgain.addEventListener('click', function () {
+            if (nasSearch) nasSearch.retryNow();
+            searchAgain.textContent = 'Searching again…';
+            setTimeout(function () { searchAgain.textContent = 'Search again ↻'; }, 1500);
+          });
+        }
         var iv = setInterval(function () {
           left--;
           if (left <= 0) {
