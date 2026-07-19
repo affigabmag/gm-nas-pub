@@ -76,6 +76,18 @@ PAGE = """<!doctype html>
  .dot.off{background:var(--danger)}
  .dot.warn{background:var(--warn)}
  .netstrip .ip{color:var(--muted);font-size:12px}
+ .danger-btn{background:var(--danger);color:#3a0a0a}
+ .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;
+  align-items:center;justify-content:center;padding:20px;z-index:50}
+ .modal-bg.open{display:flex}
+ .modal{background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:24px;max-width:420px;width:100%}
+ .modal h3{margin:0 0 12px;font-size:18px}
+ .modal p{color:var(--muted);font-size:14px;line-height:1.7;margin:0}
+ .modal ul{color:var(--muted);font-size:14px;line-height:1.8;margin:10px 0;padding-left:18px}
+ .modal-actions{display:flex;gap:12px;margin-top:22px}
+ .modal-actions>*{flex:1;margin:0}
+ .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
  .app{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border)}
  .app:first-of-type{border-top:none}
  .app .name{font-weight:600;flex:0 0 auto} .app .desc{color:var(--muted);font-size:12px}
@@ -167,7 +179,32 @@ PAGE = """<!doctype html>
   </form>
   <p class="hint">Folders live under {{ storage }} and are shared over your home network (Samba).</p>
  </div>
+
+ <div class="card"><h2>Reset</h2>
+  <p class="hint">Start setup over — forget the current WiFi and go back to the
+   first-time setup screen. Your files and admin account are kept.</p>
+  <button type="button" id="resetBtn" class="danger-btn">Reset WiFi setup</button>
+ </div>
+
  <div class="ver">gm-nas &bull; {{ version }}</div>
+</div>
+
+<div class="modal-bg" id="resetModal">
+ <div class="modal">
+  <h3>Reset WiFi setup?</h3>
+  <p>The gm-nas will:</p>
+  <ul>
+   <li>Forget its current WiFi network</li>
+   <li>Reboot into setup mode (<b>GMNas-Setup</b>)</li>
+   <li>Keep your files and admin account</li>
+  </ul>
+  <p>After it reboots, connect your phone to <b>GMNas-Setup</b> and open
+   <b>http://192.168.42.1</b> to set it up again.</p>
+  <div class="modal-actions">
+   <button type="button" class="btn-cancel" id="resetCancel">Cancel</button>
+   <form method="post" action="/reset"><button type="submit" class="danger-btn">Reset &amp; reboot</button></form>
+  </div>
+ </div>
 </div>
 <script>
  document.querySelectorAll('.eye').forEach(function(btn){
@@ -179,6 +216,15 @@ PAGE = """<!doctype html>
      btn.title = show ? 'Hide password' : 'Show password';
    });
  });
+ // Reset modal (custom confirm dialog).
+ (function(){
+   var b=document.getElementById('resetBtn'), m=document.getElementById('resetModal'),
+       c=document.getElementById('resetCancel');
+   if(!b) return;
+   b.addEventListener('click', function(){ m.classList.add('open'); });
+   c.addEventListener('click', function(){ m.classList.remove('open'); });
+   m.addEventListener('click', function(e){ if(e.target===m) m.classList.remove('open'); });
+ })();
  // Live connectivity heartbeat — polls /status every 5s and updates the badge,
  // the same way the Tailscale row shows Connected/Not.
  (function(){
@@ -390,6 +436,34 @@ def tailscale_up():
         return redirect("/?cls=err&msg=Install Tailscale first.")
     start_install("setup", TS_UP_CMD)
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
+
+
+# Forget saved WiFi (non-AP profiles), clear the provisioned flag, and reboot.
+# On reboot, firstboot sees no active network and relaunches the setup AP.
+RESET_CMD = (
+    "sleep 1; rm -f /etc/homenas/provisioned; "
+    "for c in $(nmcli -t -f NAME,TYPE connection show 2>/dev/null | "
+    "awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}'); "
+    "do nmcli connection delete \"$c\"; done; "
+    "sleep 2; systemctl reboot")
+
+RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gm-nas — resetting</title></head>
+<body style="margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+ text-align:center;padding:48px 20px">
+ <div style="font-size:44px;margin-bottom:12px">↻</div>
+ <h2 style="margin:0 0 10px">Resetting…</h2>
+ <p style="color:#94a3b8;line-height:1.7">Your gm-nas is rebooting into setup mode.<br><br>
+  On your phone, connect to <b style="color:#f1f5f9">GMNas-Setup</b><br>
+  and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to set it up again.</p>
+</body></html>"""
+
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    subprocess.Popen(["/bin/bash", "-c", RESET_CMD], start_new_session=True)
+    return RESET_PAGE
 
 
 @app.route("/status")
