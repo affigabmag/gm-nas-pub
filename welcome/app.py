@@ -100,7 +100,7 @@ PAGE = """<!doctype html>
  a.linkbtn{display:inline-block;background:var(--accent);color:var(--accent-fg);font-weight:700;
   text-decoration:none;border-radius:8px;padding:10px 14px;font-size:13px}
 </style></head><body><div class="wrap">
- <header><div class="logo">N</div><h1>Welcome to your gm-nas</h1>
+ <header><div class="logo"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#04263a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><circle cx="6.6" cy="7.5" r="0.9" fill="#04263a" stroke="none"/><circle cx="6.6" cy="16.5" r="0.9" fill="#04263a" stroke="none"/><line x1="9.5" y1="7.5" x2="17.5" y2="7.5"/><line x1="9.5" y1="16.5" x2="17.5" y2="16.5"/></svg></div><h1>Welcome to your gm-nas</h1>
   <p class="sub">{{ host }}</p>
   <div id="netstrip" class="netstrip">
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
