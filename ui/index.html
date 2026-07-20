@@ -228,57 +228,67 @@
       var card = document.querySelector('.card');
       function panel(html) { card.innerHTML = html; }
 
-      // ---- Active gm-nas discovery -----------------------------------------
+      // ---- Active gm-nas discovery (manual, on tap) --------------------------
       // After the box reboots onto the home WiFi it can't tell the phone its new
-      // IP (the AP is gone). So the phone hunts for it: image-probe every LAN IP
-      // for the box's marker (/gmnas-id.png). First one that loads IS the gm-nas.
-      function findNas(btn, msg, log) {
-        log = log || function () {};
-        var done = false, rounds = 0, probed = 0, started = Date.now();
-        // 192.168.42.x is the gm-nas setup AP ITSELF (fixed subnet) -- the phone
-        // is often still associated with it (or mid-handover) when we take our
-        // first WebRTC reading, and that subnet can NEVER hold the box once it's
-        // back on the home network. Never scan it.
-        var AP_SUBNET = '192.168.42';
-        var scannedNets = {};   // subnets already added to the active job queue
-        function found(ip) {
-          if (done) return; done = true;
-          log('MATCH ' + ip + ' after ' + probed + ' probes, ' + rounds + ' round(s), ' +
-              Math.round((Date.now() - started) / 1000) + 's');
-          btn.href = 'http://' + ip;
-          btn.textContent = 'Open your gm-nas (' + ip + ') ↗';
-          btn.style.opacity = '1';
-          btn.style.pointerEvents = 'auto';
-          if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b>.';
-        }
-        function probe(ip) {
-          if (done) return;
-          probed++;
-          var img = new Image();
-          var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; }, 3000);
-          img.onload = function () { clearTimeout(to); found(ip); };
-          img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
-        }
-        var jobs = [], idx = 0, POOL = 40;
-        function addSubnet(net, why) {
-          if (done || net === AP_SUBNET || scannedNets[net]) return;
-          scannedNets[net] = true;
-          log('adding subnet to scan: ' + net + '.x (' + why + ')');
-          for (var i = 1; i <= 254; i++) jobs.push(net + '.' + i);
-        }
-        function next() { if (done || idx >= jobs.length) return; probe(jobs[idx++]); setTimeout(next, 12); }
-        function startPass() {
-          rounds++; idx = 0;
-          log('pass ' + rounds + ' starting (' + jobs.length + ' addresses queued so far)');
-          for (var k = 0; k < POOL; k++) next();
-        }
-        // Ask WebRTC for the phone's CURRENT local subnet. Called every round --
-        // not just once -- because right after tapping Connect the phone is
-        // often still on the AP subnet; the real home subnet only shows up once
-        // the OS actually finishes switching WiFi, which can take a while.
-        function probeCurrentSubnet(cb) {
+      // IP (the AP is gone). No background auto-loop -- the user taps a button,
+      // which: (1) reads the phone's CURRENT local IP via WebRTC (its own
+      // address only -- browsers cannot read the actual gateway/router IP, no
+      // such API exists), (2) derives that /24 subnet, (3) image-probes every
+      // address in it for the gm-nas marker (/gmnas-id.png). The moment one
+      // answers, the browser is REDIRECTED there (window.location), landing
+      // straight on the welcome/account-setup page.
+      //
+      // Note: this can only find the box if the phone can reach OTHER devices
+      // on the LAN at all. If the router has WiFi client/AP isolation enabled,
+      // no scan approach -- gateway-based or full-subnet -- gets past that;
+      // it's a router setting, not something fixable client-side.
+      function scanForNas(btn, msg, log) {
+        var AP_SUBNET = '192.168.42';   // the gm-nas setup AP itself -- never scan it
+        function runOnce(onDone) {
+          var found = false, probed = 0, started = Date.now();
+          function report(ip) {
+            if (found) return; found = true;
+            log('MATCH ' + ip + ' after ' + probed + ' probes, ' +
+                Math.round((Date.now() - started) / 1000) + 's');
+            if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip +
+              '</b> — opening it now…';
+            window.location.href = 'http://' + ip + '/';
+          }
+          function probe(ip) {
+            if (found) return;
+            probed++;
+            var img = new Image();
+            var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; }, 3000);
+            img.onload = function () { clearTimeout(to); report(ip); };
+            img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
+          }
+          var jobs = [], idx = 0, POOL = 40, added = {};
+          function addSubnet(net, why) {
+            if (net === AP_SUBNET || added[net]) return;
+            added[net] = true;
+            log('scanning subnet: ' + net + '.x (' + why + ')');
+            for (var i = 1; i <= 254; i++) jobs.push(net + '.' + i);
+          }
+          function next() { if (found || idx >= jobs.length) return; probe(jobs[idx++]); setTimeout(next, 12); }
+          // Read the phone's OWN current local IP via WebRTC (host ICE
+          // candidate) -- the closest thing to "which network am I on right
+          // now" a browser can expose. No API reveals the gateway itself.
           var pc, gotOne = false;
-          try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { cb(); return; }
+          try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { pc = null; }
+          function afterProbe() {
+            if (!gotOne) {
+              log('WebRTC gave no usable subnet — using common home ranges as a fallback');
+              ['192.168.0', '192.168.1', '192.168.68', '192.168.86', '192.168.31', '10.0.0']
+                .forEach(function (n) { addSubnet(n, 'fallback'); });
+            }
+            log('pass starting (' + jobs.length + ' addresses)');
+            for (var k = 0; k < POOL; k++) next();
+            // Worst case: ~254/POOL batches * 12ms spacing + up to 3s timeout
+            // on the last-started probe. Give it a comfortable margin, then
+            // report done if nothing matched.
+            setTimeout(function () { if (!found) onDone(false); }, 8000);
+          }
+          if (!pc) { afterProbe(); return; }
           try {
             pc.createDataChannel('d');
             pc.onicecandidate = function (e) {
@@ -286,38 +296,24 @@
               var m = /(\d{1,3}(?:\.\d{1,3}){3})/.exec(e.candidate.candidate);
               if (m && /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(m[1])) {
                 gotOne = true;
-                addSubnet(m[1].replace(/\.\d+$/, ''), 'WebRTC');
+                addSubnet(m[1].replace(/\.\d+$/, ''), 'WebRTC, this device\'s current IP');
               }
             };
             pc.createOffer().then(function (o) { pc.setLocalDescription(o); });
           } catch (e) {}
-          setTimeout(function () { try { pc.close(); } catch (e) {} if (!gotOne) cb(); }, 1200);
+          setTimeout(function () { try { pc.close(); } catch (e) {} afterProbe(); }, 1200);
         }
-        // Kick off: probe now, start scanning whatever we already have (fallback
-        // ranges if WebRTC gave nothing usable yet), then keep re-probing +
-        // rescanning every round so a late subnet switch is picked up.
-        probeCurrentSubnet(function () {
-          log('WebRTC gave no usable subnet yet — using common ranges as a fallback');
-          ['192.168.0', '192.168.1', '192.168.68', '192.168.86', '192.168.31', '10.0.0']
-            .forEach(function (n) { addSubnet(n, 'fallback'); });
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          btn.textContent = 'Scanning…';
+          if (msg) msg.textContent = 'Looking for your gm-nas on this network…';
+          runOnce(function (foundIt) {
+            if (foundIt) return;   // report() already redirected the page
+            btn.disabled = false;
+            btn.textContent = 'Scan for my gm-nas ↻';
+            if (msg) msg.innerHTML = 'Not found. Make sure this phone is on your <b style="color:var(--fg)">home WiFi</b> (not GMNas-Setup), then tap to try again.';
+          });
         });
-        startPass();
-        var round = setInterval(function () {
-          if (done) { clearInterval(round); return; }
-          probeCurrentSubnet(function () {});
-          startPass();
-        }, 4000);
-        // Exposed so a "Search again" button can force an immediate re-probe +
-        // pass right now, instead of waiting for the next automatic tick --
-        // useful right after the phone actually finishes switching WiFi.
-        return {
-          retryNow: function () {
-            if (done) return;
-            log('manual "search again" — re-probing subnet and scanning now');
-            probeCurrentSubnet(function () {});
-            startPass();
-          }
-        };
       }
 
       // Step 1 — preloader while the device joins the network.
@@ -362,27 +358,22 @@
             '</div>' +
             '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 4:00</div>' +
             '<div id="scanmsg" style="color:var(--muted);font-size:12px;margin-top:12px">' +
-              'Reconnect your phone to your home WiFi — I\'ll find your gm-nas automatically…</div>' +
-            '<a id="openbtn" href="http://my-gmnas.local" ' +
-               'style="display:block;margin-top:8px;background:var(--ok);color:#04331b;font-weight:700;' +
-                      'text-decoration:none;border-radius:10px;padding:14px;font-size:16px;' +
-                      'opacity:.45;pointer-events:none">Searching… ↗</a>' +
+              'Reconnect your phone to your home WiFi, then tap below to look for your gm-nas.</div>' +
+            '<button type="button" id="scanBtn" ' +
+               'style="display:block;width:100%;margin-top:8px;background:var(--ok);color:#04331b;font-weight:700;' +
+                      'border:none;border-radius:10px;padding:14px;font-size:16px;cursor:pointer">Scan for my gm-nas ↻</button>' +
             '<div style="margin-top:14px;text-align:left">' +
               '<a href="#" id="logToggle" style="color:var(--muted);font-size:12px;text-decoration:underline">Show search details</a>' +
               '<pre id="scanlog" style="display:none;margin-top:8px;max-height:160px;overflow:auto;' +
                    'background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:8px;' +
                    'font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-all"></pre>' +
-              '<div style="margin-top:6px;display:flex;gap:8px">' +
-                '<button type="button" id="logCopy" style="display:none;margin:0;width:auto;padding:8px 12px;' +
-                     'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Copy log</button>' +
-                '<button type="button" id="searchAgain" style="margin:0;width:auto;padding:8px 12px;' +
-                     'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Search again ↻</button>' +
-              '</div>' +
+              '<button type="button" id="logCopy" style="display:none;margin-top:6px;width:auto;padding:8px 12px;' +
+                   'font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border)">Copy log</button>' +
             '</div>' +
           '</div>'
         );
         var left = 240, el = document.getElementById('cd');
-        var openbtn = document.getElementById('openbtn');
+        var scanBtn = document.getElementById('scanBtn');
         var logEl = document.getElementById('scanlog');
         var logToggle = document.getElementById('logToggle');
         var logCopy = document.getElementById('logCopy');
@@ -410,23 +401,14 @@
           logEl.textContent += '[' + ts + '] ' + msg + '\n';
           if (logEl.style.display !== 'none') logEl.scrollTop = logEl.scrollHeight;
         }
-        // Kick off active network discovery: scan the LAN for the gm-nas marker
-        // and enable the button (pointed at its real IP) the moment it answers.
-        var nasSearch = findNas(openbtn, document.getElementById('scanmsg'), scanLog);
-        var searchAgain = document.getElementById('searchAgain');
-        if (searchAgain) {
-          searchAgain.addEventListener('click', function () {
-            if (nasSearch) nasSearch.retryNow();
-            searchAgain.textContent = 'Searching again…';
-            setTimeout(function () { searchAgain.textContent = 'Search again ↻'; }, 1500);
-          });
-        }
+        // Wire the manual scan button -- nothing runs until the user taps it.
+        scanForNas(scanBtn, document.getElementById('scanmsg'), scanLog);
         var iv = setInterval(function () {
           left--;
           if (left <= 0) {
             clearInterval(iv);
             el.style.color = 'var(--ok)';
-            el.innerHTML = 'Ready! If the button is still searching, open the gm-nas IP shown on its screen.';
+            el.innerHTML = 'Ready! Tap the button above to look for your gm-nas.';
             return;
           }
           var m = Math.floor(left / 60), s = left % 60;
