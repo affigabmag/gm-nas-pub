@@ -51,7 +51,11 @@ add-apt-repository -y universe >/dev/null 2>&1 || true
 retry apt-get update
 
 echo "-- apt packages --"
-for p in avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server; do
+# network-manager is needed here for the "First-time wizard" (GMNas-Setup AP):
+# wifi-connect creates/tears down the AP via NetworkManager's D-Bus API, and
+# reset-setup.sh uses nmcli. It was intentionally NOT part of the offline base
+# (can't install without internet) -- this is the one place it's added back.
+for p in avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager; do
     echo "  installing $p ..."
     retry apt-get install -y "$p"
 done
@@ -62,6 +66,22 @@ systemctl enable --now smbd nmbd 2>/dev/null || true
 systemctl enable --now cockpit.socket 2>/dev/null || true
 systemctl enable --now nfs-kernel-server 2>/dev/null || true
 systemctl enable --now ttyd.service 2>/dev/null || true
+systemctl enable --now NetworkManager 2>/dev/null || true
+
+echo "-- wifi-connect (GMNas-Setup AP for the First-time wizard) --"
+mkdir -p /usr/local/lib/wifi-connect/ui
+retry curl -fsSL https://github.com/balena-os/wifi-connect/releases/latest/download/wifi-connect-x86_64-unknown-linux-gnu.tar.gz -o /tmp/wifi-connect.tar.gz
+tar -xzf /tmp/wifi-connect.tar.gz -C /usr/local/lib/wifi-connect || true
+chmod +x /usr/local/lib/wifi-connect/wifi-connect || true
+retry curl -fsSL "$BASE/ui/index.html" -o /usr/local/lib/wifi-connect/ui/index.html
+for f in generate_204 gen_204 hotspot-detect.html ncsi.txt connecttest.txt redirect success.txt; do
+    curl -fsSL "$BASE/ui/$f" -o "/usr/local/lib/wifi-connect/ui/$f" || true
+done
+retry curl -fsSL "$BASE/files/firstboot-wifi.sh" -o /usr/local/sbin/firstboot-wifi.sh
+chmod +x /usr/local/sbin/firstboot-wifi.sh || true
+retry curl -fsSL "$BASE/files/homenas-firstboot.service" -o /etc/systemd/system/homenas-firstboot.service
+systemctl daemon-reload
+systemctl enable homenas-firstboot.service 2>/dev/null || true
 
 echo "-- welcome app --"
 mkdir -p /usr/local/lib/gmnas-welcome

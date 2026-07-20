@@ -347,19 +347,26 @@
             probed++;
             log('probing ' + ip);
             var img = new Image();
-            var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; }, 3000);
+            var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; next(); }, 1500);
             img.onload = function () { clearTimeout(to); report(ip); };
             img.onerror = function () { clearTimeout(to); next(); };
             img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
           }
-          var jobs = [], idx = 0, added = {};
+          var jobs = [], idx = 0, added = {}, inflight = 0, BATCH = 5;
           function addSubnet(net, why) {
             if (net === AP_SUBNET || added[net]) return;
             added[net] = true;
             log('scanning subnet: ' + net + '.x (' + why + ')');
             for (var i = 1; i <= 254; i++) jobs.push(net + '.' + i);
           }
-          function next() { if (found || idx >= jobs.length) return; probe(jobs[idx++]); }
+          // "next" fires once per completed probe (success/timeout) -- keeps
+          // exactly BATCH probes in flight at once, still logs every single IP
+          // individually (unlike the fast scan's silent 40-wide pool).
+          function next() {
+            if (found) return;
+            if (idx >= jobs.length) return;
+            probe(jobs[idx++]);
+          }
           var pc, gotOne = false;
           try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { pc = null; }
           function afterProbe() {
@@ -368,9 +375,9 @@
               ['192.168.0', '192.168.1', '192.168.68', '192.168.86', '192.168.31', '10.0.0']
                 .forEach(function (n) { addSubnet(n, 'fallback'); });
             }
-            log('sequential pass starting (' + jobs.length + ' addresses, one per probe)');
-            next();
-            setTimeout(function () { if (!found) onDone(false); }, 254 * 3500);
+            log('sequential pass starting (' + jobs.length + ' addresses, ' + BATCH + ' at a time)');
+            for (var k = 0; k < BATCH; k++) next();
+            setTimeout(function () { if (!found) onDone(false); }, Math.ceil(254 / BATCH) * 1500 + 4000);
           }
           if (!pc) { afterProbe(); return; }
           try {
