@@ -303,7 +303,23 @@
           } catch (e) {}
           setTimeout(function () { try { pc.close(); } catch (e) {} afterProbe(); }, 1200);
         }
+        // Best-effort WiFi check via the Network Information API. NOT reliable
+        // everywhere -- iOS Safari doesn't implement it at all, and several
+        // browsers intentionally return "unknown" for privacy even on WiFi.
+        // Only ever used to BLOCK the definite "cellular" case; anything else
+        // (wifi/ethernet/unknown/unsupported) proceeds normally.
+        function connectionType() {
+          var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+          return c && c.type ? c.type : 'unknown';
+        }
         btn.addEventListener('click', function () {
+          var ct = connectionType();
+          log('connection type: ' + ct);
+          if (ct === 'cellular') {
+            if (msg) msg.innerHTML = 'This phone looks like it\'s on <b style="color:var(--fg)">mobile data</b>, not WiFi. ' +
+              'Turn off mobile data and connect to your home WiFi, then tap to try again.';
+            return;
+          }
           btn.disabled = true;
           btn.textContent = 'Scanning…';
           if (msg) msg.textContent = 'Looking for your gm-nas on this network…';
