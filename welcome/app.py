@@ -93,6 +93,8 @@ PAGE = """<!doctype html>
  .netstrip .ip{color:var(--muted);font-size:12px}
  .hver{color:var(--muted);font-size:11px;margin:0}
  .danger-btn{background:var(--danger);color:#3a0a0a}
+ .warn-btn{background:var(--warn);color:#331a00}
+ .info-btn{background:var(--surface-1);color:var(--text-secondary);border:1px solid var(--border);cursor:help}
  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;
   align-items:center;justify-content:center;padding:20px;z-index:50}
  .modal-bg.open{display:flex}
@@ -275,9 +277,17 @@ PAGE = """<!doctype html>
   </div>
 
   <div class="msec">
-   <h4>Reset</h4>
-   <p class="hint">Forget WiFi and return to first-time setup. Files &amp; account kept.</p>
-   <button type="button" id="resetOpen" class="danger-btn">Reset WiFi setup</button>
+   <h4>Reset options</h4>
+   <div style="display:flex; gap:12px; flex-wrap:wrap">
+    <div style="flex:1; min-width:200px">
+     <button type="button" id="configResetOpen" class="warn-btn" style="width:100%">Config reset</button>
+     <button type="button" class="info-btn" id="configInfo" title="What does this do?" style="width:100%; margin-top:4px; padding:4px; font-size:12px">ℹ What's this?</button>
+    </div>
+    <div style="flex:1; min-width:200px">
+     <button type="button" id="factoryResetOpen" class="danger-btn" style="width:100%">Factory reset</button>
+     <button type="button" class="info-btn" id="factoryInfo" title="What does this do?" style="width:100%; margin-top:4px; padding:4px; font-size:12px">ℹ What's this?</button>
+    </div>
+   </div>
   </div>
 
   <div class="modal-actions">
@@ -286,20 +296,43 @@ PAGE = """<!doctype html>
  </div>
 </div>
 
-<div class="modal-bg" id="resetModal">
+<div class="modal-bg" id="configResetModal">
  <div class="modal">
-  <h3>Reset WiFi setup?</h3>
+  <h3>Config reset — WiFi only</h3>
   <p>The gm-nas will:</p>
   <ul>
-   <li>Forget its current WiFi network</li>
-   <li>Reboot into setup mode (<b>GMNas-Setup</b>)</li>
-   <li>Keep your files and admin account</li>
+   <li><b>Forget</b> its current WiFi network</li>
+   <li>Delete saved WiFi profile</li>
+   <li><b>Reboot into setup mode</b> (GMNas-Setup AP)</li>
+   <li><b>Keep</b> your files, admin account, Samba shares</li>
   </ul>
-  <p>After it reboots, connect your phone to <b>GMNas-Setup</b> and open
-   <b>http://192.168.42.1</b> to set it up again.</p>
+  <p><b>Use this if:</b> You want to re-join a different WiFi network.</p>
+  <p>After reboot, connect to <b>GMNas-Setup</b> and pick a new WiFi.</p>
   <div class="modal-actions">
-   <button type="button" class="btn-cancel" id="resetCancel">Cancel</button>
-   <form method="post" action="/reset"><button type="submit" class="danger-btn">Reset &amp; reboot</button></form>
+   <button type="button" class="btn-cancel" id="configResetCancel">Cancel</button>
+   <form method="post" action="/reset"><button type="submit" class="warn-btn">Config reset &amp; reboot</button></form>
+  </div>
+ </div>
+</div>
+
+<div class="modal-bg" id="factoryResetModal">
+ <div class="modal">
+  <h3>⚠️ Factory reset — Total wipe</h3>
+  <p style="color: var(--text-danger)"><b>WARNING: This erases everything except the OS.</b></p>
+  <p>The gm-nas will:</p>
+  <ul>
+   <li><b>Delete</b> your admin account</li>
+   <li><b>Delete</b> all Samba shares</li>
+   <li><b>Erase all files</b> in storage (/srv/storage)</li>
+   <li><b>Forget</b> WiFi networks</li>
+   <li><b>Reboot into setup mode</b> (GMNas-Setup AP)</li>
+  </ul>
+  <p><b>Keep:</b> Operating system, all packages.</p>
+  <p><b>Use this if:</b> You want to start completely fresh (new user, moving to someone else).</p>
+  <p style="color: var(--text-danger)"><b>This cannot be undone without reflashing the OS.</b></p>
+  <div class="modal-actions">
+   <button type="button" class="btn-cancel" id="factoryResetCancel">Cancel</button>
+   <form method="post" action="/factory-reset"><button type="submit" class="danger-btn">Factory reset &amp; reboot</button></form>
   </div>
  </div>
 </div>
@@ -318,10 +351,11 @@ PAGE = """<!doctype html>
  {% if busy %}
  setInterval(function(){
    var a = document.activeElement, t = a ? a.tagName : '';
-   var rOpen = document.getElementById('resetModal');
+   var crOpen = document.getElementById('configResetModal');
+   var frOpen = document.getElementById('factoryResetModal');
    var mOpen = document.getElementById('manageModal');
    function isOpen(el){ return el && el.classList.contains('open'); }
-   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(rOpen) && !isOpen(mOpen))
+   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(crOpen) && !isOpen(frOpen) && !isOpen(mOpen))
      location.reload();
  }, 5000);
  {% endif %}
@@ -333,19 +367,28 @@ PAGE = """<!doctype html>
      a.href = a.dataset.proto + '://' + h + ':' + a.dataset.port;
    });
  })();
- // Manage NAS panel (gear) + Reset confirm dialog.
+ // Manage NAS panel (gear) + Reset confirm dialogs.
  (function(){
    var g=document.getElementById('gearBtn'),
        mm=document.getElementById('manageModal'), mc=document.getElementById('manageClose'),
-       rm=document.getElementById('resetModal'), rc=document.getElementById('resetCancel'),
-       ro=document.getElementById('resetOpen');
+       crm=document.getElementById('configResetModal'), crc=document.getElementById('configResetCancel'),
+       cro=document.getElementById('configResetOpen'), cri=document.getElementById('configInfo'),
+       frm=document.getElementById('factoryResetModal'), frc=document.getElementById('factoryResetCancel'),
+       fro=document.getElementById('factoryResetOpen'), fri=document.getElementById('factoryInfo');
    function close(el){ if(el) el.classList.remove('open'); }
    if(g&&mm){ g.addEventListener('click', function(){ mm.classList.add('open'); }); }
    if(mc){ mc.addEventListener('click', function(){ close(mm); }); }
    if(mm){ mm.addEventListener('click', function(e){ if(e.target===mm) close(mm); }); }
-   if(ro&&rm){ ro.addEventListener('click', function(){ close(mm); rm.classList.add('open'); }); }
-   if(rc){ rc.addEventListener('click', function(){ close(rm); }); }
-   if(rm){ rm.addEventListener('click', function(e){ if(e.target===rm) close(rm); }); }
+   // Config reset button + info
+   if(cro&&crm){ cro.addEventListener('click', function(){ close(mm); crm.classList.add('open'); }); }
+   if(cri){ cri.addEventListener('click', function(){ crm.classList.add('open'); }); }
+   if(crc){ crc.addEventListener('click', function(){ close(crm); }); }
+   if(crm){ crm.addEventListener('click', function(e){ if(e.target===crm) close(crm); }); }
+   // Factory reset button + info
+   if(fro&&frm){ fro.addEventListener('click', function(){ close(mm); frm.classList.add('open'); }); }
+   if(fri){ fri.addEventListener('click', function(){ frm.classList.add('open'); }); }
+   if(frc){ frc.addEventListener('click', function(){ close(frm); }); }
+   if(frm){ frm.addEventListener('click', function(e){ if(e.target===frm) close(frm); }); }
  })();
  // Live connectivity heartbeat — polls /status every 5s and updates the badge,
  // the same way the Tailscale row shows Connected/Not.
@@ -821,11 +864,39 @@ RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
   and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to set it up again.</p>
 </body></html>"""
 
+FACTORY_RESET_CMD = "sleep 1; sudo /usr/local/bin/factory-reset.sh"
+
+FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gm-nas — factory reset</title></head>
+<body style="margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+ text-align:center;padding:48px 20px">
+ <div style="font-size:44px;margin-bottom:12px">⚠️</div>
+ <h2 style="margin:0 0 10px">Factory Resetting…</h2>
+ <p style="color:#94a3b8;line-height:1.7">Your gm-nas is erasing all files, accounts, and shares.<br><br>
+  The system will reboot and replays the entire first-boot setup.<br><br>
+  On your phone, connect to <b style="color:#f1f5f9">GMNas-Setup</b><br>
+  and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to reconfigure.</p>
+</body></html>"""
+
 
 @app.route("/reset", methods=["POST"])
 def reset():
     subprocess.Popen(["/bin/bash", "-c", RESET_CMD], start_new_session=True)
     return RESET_PAGE
+
+
+@app.route("/factory-reset", methods=["POST"])
+def factory_reset():
+    subprocess.Popen(["/bin/bash", "-c", FACTORY_RESET_CMD], start_new_session=True)
+    return FACTORY_RESET_PAGE
+
+
+@app.route("/gmnas-id.png")
+def marker():
+    from flask import Response
+    png_1x1 = base64.b64decode(b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==')
+    return Response(png_1x1, mimetype='image/png')
 
 
 @app.route("/status")

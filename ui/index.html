@@ -332,6 +332,84 @@
         });
       }
 
+      function scanSequential(btn, msg, log) {
+        var AP_SUBNET = '192.168.42';
+        function runOnce(onDone) {
+          var found = false, probed = 0, started = Date.now();
+          function report(ip) {
+            if (found) return; found = true;
+            log('MATCH ' + ip + ' after ' + probed + ' probes, ' + Math.round((Date.now() - started) / 1000) + 's');
+            if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b> — opening it now…';
+            window.location.href = 'http://' + ip + '/';
+          }
+          function probe(ip) {
+            if (found) return;
+            probed++;
+            log('probing ' + ip);
+            var img = new Image();
+            var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; }, 3000);
+            img.onload = function () { clearTimeout(to); report(ip); };
+            img.onerror = function () { clearTimeout(to); next(); };
+            img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
+          }
+          var jobs = [], idx = 0, added = {};
+          function addSubnet(net, why) {
+            if (net === AP_SUBNET || added[net]) return;
+            added[net] = true;
+            log('scanning subnet: ' + net + '.x (' + why + ')');
+            for (var i = 1; i <= 254; i++) jobs.push(net + '.' + i);
+          }
+          function next() { if (found || idx >= jobs.length) return; probe(jobs[idx++]); }
+          var pc, gotOne = false;
+          try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { pc = null; }
+          function afterProbe() {
+            if (!gotOne) {
+              log('WebRTC gave no usable subnet — using common home ranges as a fallback');
+              ['192.168.0', '192.168.1', '192.168.68', '192.168.86', '192.168.31', '10.0.0']
+                .forEach(function (n) { addSubnet(n, 'fallback'); });
+            }
+            log('sequential pass starting (' + jobs.length + ' addresses, one per probe)');
+            next();
+            setTimeout(function () { if (!found) onDone(false); }, 254 * 3500);
+          }
+          if (!pc) { afterProbe(); return; }
+          try {
+            pc.createDataChannel('d');
+            pc.onicecandidate = function (e) {
+              if (!e || !e.candidate) return;
+              var m = /(\d{1,3}(?:\.\d{1,3}){3})/.exec(e.candidate.candidate);
+              if (m && /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(m[1])) {
+                gotOne = true;
+                addSubnet(m[1].replace(/\.\d+$/, ''), 'WebRTC, this device\'s current IP');
+              }
+            };
+            pc.createOffer().then(function (o) { pc.setLocalDescription(o); });
+          } catch (e) {}
+          setTimeout(function () { try { pc.close(); } catch (e) {} afterProbe(); }, 1200);
+        }
+        function connectionType() {
+          var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+          return c && c.type ? c.type : 'unknown';
+        }
+        btn.addEventListener('click', function () {
+          var ct = connectionType();
+          log('connection type: ' + ct);
+          if (ct === 'cellular') {
+            if (msg) msg.innerHTML = 'This phone looks like it\'s on <b style="color:var(--fg)">mobile data</b>, not WiFi. Turn off mobile data and connect to your home WiFi, then tap to try again.';
+            return;
+          }
+          btn.disabled = true;
+          btn.textContent = 'Scanning sequentially…';
+          if (msg) msg.textContent = 'Probing each IP one by one (slower but detailed)…';
+          runOnce(function (foundIt) {
+            if (foundIt) return;
+            btn.disabled = false;
+            btn.textContent = 'Scan each IP sequentially (slower)';
+            if (msg) msg.innerHTML = 'Not found. Make sure this phone is on your <b style="color:var(--fg)">home WiFi</b> (not GMNas-Setup), then tap to try again.';
+          });
+        });
+      }
+
       // Step 1 — preloader while the device joins the network.
       panel(
         '<div style="text-align:center;padding:14px 4px">' +
@@ -378,6 +456,9 @@
             '<button type="button" id="scanBtn" ' +
                'style="display:block;width:100%;margin-top:8px;background:var(--ok);color:#04331b;font-weight:700;' +
                       'border:none;border-radius:10px;padding:14px;font-size:16px;cursor:pointer">Scan for my gm-nas ↻</button>' +
+            '<button type="button" id="scanSeqBtn" ' +
+               'style="display:block;width:100%;margin-top:6px;background:#6366f1;color:#f1f5f9;font-weight:700;' +
+                      'border:none;border-radius:10px;padding:14px;font-size:14px;cursor:pointer">Scan each IP sequentially (slower)</button>' +
             '<div style="margin-top:14px;text-align:left">' +
               '<a href="#" id="logToggle" style="color:var(--muted);font-size:12px;text-decoration:underline">Show search details</a>' +
               '<pre id="scanlog" style="display:none;margin-top:8px;max-height:160px;overflow:auto;' +
@@ -417,8 +498,10 @@
           logEl.textContent += '[' + ts + '] ' + msg + '\n';
           if (logEl.style.display !== 'none') logEl.scrollTop = logEl.scrollHeight;
         }
-        // Wire the manual scan button -- nothing runs until the user taps it.
+        // Wire the manual scan buttons -- nothing runs until the user taps them.
+        var scanSeqBtn = document.getElementById('scanSeqBtn');
         scanForNas(scanBtn, document.getElementById('scanmsg'), scanLog);
+        scanSequential(scanSeqBtn, document.getElementById('scanmsg'), scanLog);
         var iv = setInterval(function () {
           left--;
           if (left <= 0) {

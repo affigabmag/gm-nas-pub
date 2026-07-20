@@ -56,6 +56,14 @@ fi
 rm -f "$SHARES_JSON" "$SHARES_SEEDED_FLAG"
 log "cleared shares.json + seeded flag -- defaults reseed on next welcome load"
 
+# --- Wipe all user data on storage partition -----
+log "erasing all user files from /srv/storage"
+rm -rf /srv/storage/* 2>/dev/null || true
+mkdir -p /srv/storage 2>/dev/null || true
+chown root:gmnas /srv/storage 2>/dev/null || true
+chmod 2775 /srv/storage 2>/dev/null || true
+log "storage partition cleared and reset to factory state"
+
 # --- Back to the b1 flow: welcome page asks for a fresh account again -------
 mkdir -p "$(dirname "$PW_FLAG")"
 touch "$PW_FLAG"

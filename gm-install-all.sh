@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================================
-# gm-install-all — install the heavier components that need internet.
-# The minimal install ships only the essentials (NetworkManager, avahi, btop,
-# wifi-connect). Run this when the box is online to add the rest:
-#   Cockpit, Tailscale, Samba, NFS, ttyd browser terminal, welcome app.
+# gm-install-all — "Resume install": download + install everything the OFFLINE
+# base skipped. Run this from the gmnas menu AFTER you have joined WiFi.
+#   Installs: avahi (.local), btop, ttyd, samba, python3-flask, cockpit, NFS,
+#             the gm-nas welcome app, and refreshes the helper scripts.
+# Stays on netplan/networkd for WiFi (does NOT install NetworkManager, which
+# would hijack the WiFi link you just connected).
 #     sudo gm-install-all
 # ============================================================================
 set -u
@@ -16,41 +18,74 @@ fi
 
 LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
 exec > >(tee -a "$LOGDIR/gm-install-all.log") 2>&1
-echo "$(date '+%F %T') ===== gm-install-all start ====="
+echo "$(date '+%F %T') ===== gm-install-all (resume) start ====="
 
-# need internet
-if ! getent hosts github.com >/dev/null 2>&1 && ! curl -fsS --max-time 8 https://github.com >/dev/null 2>&1; then
-    echo "No internet — connect WiFi/tether first (try: sudo join-wifi)." >&2
-    exit 1
-fi
+# Robust online check (routers often block ICMP -> ping alone is unreliable).
+net_online() {
+    ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 && return 0
+    ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && return 0
+    timeout 5 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' 2>/dev/null && return 0
+    timeout 5 bash -c 'exec 3<>/dev/tcp/8.8.8.8/53'  2>/dev/null && return 0
+    return 1
+}
+
+# --- need internet (retry forever; a flaky link just pauses) ----------------
+tries=0
+while ! net_online; do
+    tries=$((tries+1))
+    echo "  NO INTERNET yet (attempt $tries) -- connect WiFi first (menu: Connect to WiFi)."
+    echo "  Waiting 10s, will retry forever... (Ctrl-C to abort)"
+    sleep 10
+done
+echo "== internet OK, starting downloads =="
 
 export DEBIAN_FRONTEND=noninteractive
-echo "== installing all gm-nas components (this needs internet) =="
 
-echo "-- apt: cockpit, samba, nfs, flask --"
-apt-get update
-apt-get install -y cockpit samba nfs-kernel-server python3-flask
-systemctl enable --now cockpit.socket 2>/dev/null || true
+# retry-forever wrapper so a flaky link never fails the install
+retry() { local n=1; while true; do "$@" && return 0; echo "  retry $n: $* (waiting 10s)"; sleep 10; n=$((n+1)); done; }
+
+echo "-- apt update + universe --"
+retry apt-get update
+apt-get install -y software-properties-common >/dev/null 2>&1 || true
+add-apt-repository -y universe >/dev/null 2>&1 || true
+retry apt-get update
+
+echo "-- apt packages --"
+for p in avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server; do
+    echo "  installing $p ..."
+    retry apt-get install -y "$p"
+done
+
+echo "-- enabling services --"
+systemctl enable --now ssh avahi-daemon 2>/dev/null || true
 systemctl enable --now smbd nmbd 2>/dev/null || true
+systemctl enable --now cockpit.socket 2>/dev/null || true
 systemctl enable --now nfs-kernel-server 2>/dev/null || true
+systemctl enable --now ttyd.service 2>/dev/null || true
 
-echo "-- Tailscale --"
-curl -fsSL https://tailscale.com/install.sh | sh || true
-systemctl enable --now tailscaled 2>/dev/null || true
-
-echo "-- ttyd browser terminal --"
-curl -fsSL https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
-
-echo "-- welcome app + services --"
+echo "-- welcome app --"
 mkdir -p /usr/local/lib/gmnas-welcome
-curl -fsSL "$BASE/welcome/app.py"              -o /usr/local/lib/gmnas-welcome/app.py
-curl -fsSL "$BASE/files/gmnas-welcome.service" -o /etc/systemd/system/gmnas-welcome.service
-curl -fsSL "$BASE/files/ttyd.service"          -o /etc/systemd/system/ttyd.service
+retry curl -fsSL "$BASE/welcome/app.py"              -o /usr/local/lib/gmnas-welcome/app.py
+retry curl -fsSL "$BASE/files/gmnas-welcome.service" -o /etc/systemd/system/gmnas-welcome.service
+retry curl -fsSL "$BASE/files/ttyd.service"          -o /etc/systemd/system/ttyd.service
 systemctl daemon-reload
 systemctl enable --now ttyd.service gmnas-welcome.service 2>/dev/null || true
+
+# Helper scripts are NEVER re-downloaded from GitHub here. They already came
+# from the seed (the current, correct copies -- e.g. 'gmnas' with the "Check
+# internet" menu option). GitHub can be stale/behind the seed; overwriting a
+# good local script with an older remote one would silently remove features
+# ("x" disappearing from the menu). If you genuinely want the GitHub version,
+# use 'gm-update' explicitly -- never as a side effect of resuming install.
+curl -fsSL --max-time 20 "$BASE/VERSION" -o /etc/gmnas-build-version 2>/dev/null || true
+
+# storage perms (group may exist only after packages create it; best-effort)
+chown root:gmnas /srv/storage 2>/dev/null || true
+chmod 2775 /srv/storage 2>/dev/null || true
 
 H="$(hostname).local"
 echo "== done =="
 echo "  Welcome  : http://$H"
 echo "  Cockpit  : https://$H:9090"
 echo "  Terminal : http://$H:7681"
+echo "  (open the Welcome page to create your account + shares)"

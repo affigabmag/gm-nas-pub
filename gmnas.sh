@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.60.20260719221619"   # bump when this menu changes
+MENU_VER="01.123.20260720153126"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -21,6 +21,15 @@ fi
 H() { hostname 2>/dev/null; }
 IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
 pause() { echo; read -rp "Press Enter to continue…" _; }
+# Robust "is the box online?" check. Does NOT rely on ICMP alone (many routers
+# block ping to 8.8.8.8): tries ping, then a TCP connect to public DNS/HTTPS.
+net_online() {
+    ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 && return 0
+    ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && return 0
+    timeout 5 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' 2>/dev/null && return 0
+    timeout 5 bash -c 'exec 3<>/dev/tcp/8.8.8.8/53'  2>/dev/null && return 0
+    return 1
+}
 # Run a gm-nas helper command, falling back to /usr/local/bin/<name> only if it
 # genuinely isn't on PATH -- NOT on any non-zero exit from a real run. The old
 # "sudo X || sudo bash /usr/local/bin/X" pattern re-ran the WHOLE command a
@@ -59,19 +68,22 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f g h w i j k l m n o r p q )
+KEYS=(   a b c d e f g x h w i j k t l m n o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" \
-         "Connect to WiFi" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Install ALL" \
+         "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Resume install (online)" \
+         "Resume install (USB tether)" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
          "Reboot" "Power off" "Quit" )
 DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
-         "firstboot / join-wifi / reset / etc." "btop" "join-wifi" "broadcast GMNas-Setup, set up from phone" \
+         "firstboot / join-wifi / reset / etc." "btop" "join-wifi" "ping test: is the box online?" \
+         "broadcast GMNas-Setup, set up from phone" \
          "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" \
-         "Cockpit/Tailscale/Samba/NFS/ttyd/welcome" \
+         "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
+         "download rest over a phone USB tether (if WiFi unavailable)" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
          "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
-declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [9]="WEB & SERVICES" \
-                       [11]="INSTALL & UPDATE" [15]="SHELL & POWER" )
+declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [10]="WEB & SERVICES" \
+                       [12]="INSTALL & UPDATE" [17]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -94,6 +106,9 @@ render() {
 
 # clear the screen ONCE on entry; render() then redraws in place each keystroke
 printf '\033[2J\033[H'
+# NOTE: no upfront "sudo -v" here -- it would prompt for a password before the
+# menu even shows. Actions that need root call sudo themselves (and sudo then
+# caches the credential for a few minutes).
 while true; do
     render
     IFS= read -rsn1 k
@@ -123,6 +138,25 @@ while true; do
            echo "Reboot now? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then sudo reboot; else pause; fi ;;
+        x|X) echo "Checking internet…"; echo
+             ipaddr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+             gw="$(ip route 2>/dev/null | awk '/^default/{print $3; exit}')"
+             echo " This box IP : ${ipaddr:-<none>}"
+             echo " Interfaces  : $(ip -brief link 2>/dev/null | awk '$1!="lo"{printf "%s(%s) ",$1,$2}')"
+             echo " Gateway     : ${gw:-<none>}"
+             if net_online; then
+                 echo " Internet    : ${GR}ONLINE${R}"
+                 if getent hosts github.com >/dev/null 2>&1; then
+                     echo " DNS         : ${GR}OK${R} (github.com resolves)"
+                 else
+                     echo " DNS         : ${YL}FAIL${R} (online but name lookup broken)"
+                 fi
+             else
+                 echo " Internet    : ${RD}OFFLINE${R} (no route out)"
+                 [ -z "$gw" ] && echo "   note: no default gateway — WiFi/DHCP may not have finished."
+                 echo "   -> Connect WiFi (menu: Connect to WiFi) or plug a phone USB tether."
+             fi
+             pause ;;
         h|H) echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
@@ -164,6 +198,7 @@ while true; do
         j|J) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
            echo "restarted."; pause ;;
         k|K) run_helper gm-install-all; pause ;;
+        t|T) run_helper gm-resume-usb; pause ;;
         l|L) run_helper gm-update; pause ;;
         m|M) run_helper gm-usb mount; pause ;;
         n|N) run_helper gm-usb apply; pause ;;
