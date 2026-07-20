@@ -42,7 +42,7 @@ for f in generate_204 gen_204 hotspot-detect.html ncsi.txt connecttest.txt redir
 done
 
 # Refresh the helper commands too (so the gmnas menu updates itself).
-for h in gmnas gm-usb gm-update join-wifi reset-setup factory-reset gm-install-all; do
+for h in gmnas gm-usb gm-update join-wifi reset-setup factory-reset gm-install-all gm-resume-usb; do
     if curl -fsSL "$BASE/$h.sh" -o "/usr/local/bin/$h"; then chmod +x "/usr/local/bin/$h"; echo "  updated cmd: $h"; fi
 done
 
