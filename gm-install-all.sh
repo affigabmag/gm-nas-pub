@@ -134,16 +134,21 @@ systemctl enable homenas-firstboot.service 2>/dev/null || true
 echo "-- chawan (cha) terminal web browser --"
 if ! command -v cha >/dev/null 2>&1; then
     apt-get install -y nim git pkg-config libssl-dev zlib1g-dev >/dev/null 2>&1 || true
-    if command -v nimble >/dev/null 2>&1; then
-        retry nimble install -y chawan >/dev/null 2>&1 || true
-    fi
-    if ! command -v cha >/dev/null 2>&1 && command -v nim >/dev/null 2>&1; then
+    if command -v nim >/dev/null 2>&1; then
         rm -rf /tmp/chawan
-        retry git clone https://git.sr.ht/~bptato/chawan /tmp/chawan
-        ( cd /tmp/chawan && make submodule >/dev/null 2>&1; make ) || true
-        make -C /tmp/chawan install PREFIX=/usr/local || true
+        # chawan isn't a published nimble package -- build from source.
+        # One shot, not retry(): a real build failure (missing dep, bad
+        # submodule) would otherwise retry forever with no visible error.
+        if git clone https://git.sr.ht/~bptato/chawan /tmp/chawan; then
+            ( cd /tmp/chawan && make submodule && make ) \
+                && make -C /tmp/chawan install PREFIX=/usr/local \
+                || echo "  WARNING: chawan build failed -- see output above"
+        else
+            echo "  WARNING: could not clone chawan (no internet? sr.ht down?)"
+        fi
+    else
+        echo "  WARNING: nim not available from apt -- cannot build chawan"
     fi
-    [ -x "$HOME/.nimble/bin/cha" ] && ln -sf "$HOME/.nimble/bin/cha" /usr/local/bin/cha
 fi
 if command -v cha >/dev/null 2>&1; then
     echo "  chawan installed: $(command -v cha)"
