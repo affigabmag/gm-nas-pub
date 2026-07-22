@@ -93,9 +93,8 @@ nmcli -t -f NAME,TYPE connection show 2>/dev/null \
       done
 rm -f /etc/homenas/provisioned
 
-log "restarting first-boot setup service (launches GMNas-Setup AP)"
-systemctl restart homenas-firstboot.service 2>/dev/null || true
-sleep 2
-log "homenas-firstboot state: $(systemctl is-active homenas-firstboot.service 2>/dev/null)"
-log "done -- gm-nas will replay the full first-boot flow from WiFi setup onward."
+log "done -- rebooting now; homenas-firstboot launches GMNas-Setup AP on boot"
 log "connect a phone to WiFi 'GMNas-Setup', browse http://192.168.42.1"
+sleep 2
+log "rebooting now"
+systemctl reboot

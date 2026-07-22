@@ -35,7 +35,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.16.20260723024500"   # bump on every welcome-app change
+WELCOME_VER = "01.17.20260723025500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -961,7 +961,7 @@ FACTORY_RESET_STEPS = [
     ("password-not-set flag restored", "Restoring first-time setup flow"),
     ("hostname reset", "Resetting hostname"),
     ("disconnecting WiFi", "Disconnecting WiFi"),
-    ("restarting first-boot setup service", "Launching the setup AP"),
+    ("rebooting now", "Rebooting into setup mode"),
 ]
 
 FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
@@ -981,8 +981,9 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
  <ul id="frSteps" style="list-style:none;padding:0;margin:18px auto;max-width:360px;text-align:left;
      font-size:14px;color:#94a3b8;line-height:2"></ul>
  <div id="frDone" style="display:none">
-  <p style="color:#f1f5f9;line-height:1.7">Your gm-nas has switched to <b>setup mode</b>.<br><br>
-   On your phone, connect to <b>GMNas-Setup</b><br>
+  <p style="color:#94a3b8;line-height:1.7">Rebooting into <b style="color:#f1f5f9">setup mode</b>…
+   ready in about <span id="frCd" style="color:#f1f5f9;font-weight:700">2:00</span></p>
+  <p style="color:#f1f5f9;line-height:1.7">Once it's back, connect your phone to <b>GMNas-Setup</b><br>
    and open <b>http://192.168.42.1</b><br>to reconfigure.</p>
  </div>
 <script>
@@ -1001,6 +1002,16 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
    clearInterval(iv);
    document.getElementById('frBar').style.width = '100%';
    document.getElementById('frDone').style.display = 'block';
+   // The box actually reboots now (systemctl reboot at the end of
+   // factory-reset.sh) -- give a real countdown for boot + AP startup
+   // instead of implying it's instantly ready.
+   var left = 120, cd = document.getElementById('frCd');
+   var cdIv = setInterval(function(){
+     left--;
+     if (left <= 0) { cd.textContent = 'now'; clearInterval(cdIv); return; }
+     var m = Math.floor(left / 60), s = left % 60;
+     cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+   }, 1000);
  }
  var iv = setInterval(function(){
    fetch('/factory-reset/log').then(function(r){ return r.text(); }).then(function(text){
