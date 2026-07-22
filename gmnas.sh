@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.128.20260720175622"   # bump when this menu changes
+MENU_VER="01.129.20260722131509"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -68,22 +68,23 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f g x h w i j k t l m n o r p q )
-TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" \
+KEYS=(   a b c d e f z g x h w i j k t l m n o r p q )
+TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
          "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Resume install (online)" \
          "Resume install (USB tether)" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
          "Reboot" "Power off" "Quit" )
 DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
-         "firstboot / join-wifi / reset / etc." "btop" "join-wifi" "ping test: is the box online?" \
+         "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows Experience Index style)" \
+         "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
          "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" \
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
          "download rest over a phone USB tether (if WiFi unavailable)" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
          "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
-declare -A SECBEFORE=( [0]="INFO & LOGS" [6]="NETWORK & SETUP" [10]="WEB & SERVICES" \
-                       [12]="INSTALL & UPDATE" [17]="SHELL & POWER" )
+declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
+                       [13]="INSTALL & UPDATE" [18]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -130,6 +131,7 @@ while true; do
              echo; echo "--- firstboot-wifi.log (last 50) ---"
              sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"; pause ;;
         f|F) btop ;;
+        z|Z) run_helper gm-benchmark; pause ;;
         g|G) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
            run_helper join-wifi "$s" "$p"
