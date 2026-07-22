@@ -34,14 +34,13 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.04.20260719132811"   # bump on every welcome-app change
+WELCOME_VER = "01.05.20260722234500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
-# Created once at first setup. The whole storage partition ("/") is the main
-# share; plus documents and a media/{pictures,video} tree.
+# Created once at first setup: documents and a media/{pictures,video} tree.
+# (No whole-storage-root share -- keeps the share list to just these two.)
 DEFAULT_SHARES = [
-    {"name": "storage",   "path": "/srv/storage",           "label": "/ (all storage)"},
     {"name": "documents", "path": "/srv/storage/documents", "label": "documents"},
     {"name": "media",     "path": "/srv/storage/media",     "label": "media"},
 ]
@@ -198,12 +197,36 @@ PAGE = """<!doctype html>
      <form class="inline" method="post" action="/install/tailscale"><button>Install</button></form>
    {% endif %}
   </div>
+  <!-- Syncthing: cross-device folder sync, own web GUI on :8384 -->
+  <div class="app">
+   <span class="name">Syncthing</span>
+   <span class="grow"><span class="desc">Sync files with your phone/PC (no cloud)</span></span>
+   {% if syncthing == 'ready' %}<a class="linkbtn svclink" data-proto="http" data-port="8384" href="http://{{ host }}:8384" target="_blank">Open ↗</a>
+   {% elif syncthing == 'busy' %}<span class="badge b-busy">Installing…</span>
+   {% else %}
+     <form class="inline" method="post" action="/install/syncthing"><button>Install</button></form>
+   {% endif %}
+  </div>
   {% if ts_login_url %}
   <p class="hint">Tailscale needs a one-time sign-in. Open this link and log in:</p>
   <a class="linkbtn" href="{{ ts_login_url }}" target="_blank">Sign in to Tailscale ↗</a>
   {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
  </div>
+
+ {% if syncthing == 'ready' %}
+ <div class="card"><h2>Syncthing — sync your phone</h2>
+  <p class="hint">Syncthing keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your
+   phone, directly over your home network — no cloud, no accounts. Install the app, open it, add a
+   folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
+  <div class="links">
+   <a class="linkbtn" href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">Get it for Android ↗</a>
+   <a class="linkbtn" href="https://apps.apple.com/app/mobius-sync/id1539203216" target="_blank">Get it for iPhone ↗</a>
+  </div>
+  <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (Möbius Sync)
+   occasionally to let it sync. Android's version can run continuously in the background.</p>
+ </div>
+ {% endif %}
 
  <div class="card"><h2>Manage</h2>
   <div class="links">
@@ -623,6 +646,12 @@ def tailscale_state():
         return "ready"
 
 
+def syncthing_state():
+    if shutil.which("syncthing"):
+        return "ready"
+    return "busy" if is_installing("setup") else "off"
+
+
 def tailscale_login_url():
     """Scrape the most recent login URL from the tailscale-up install log."""
     _, log = _paths("tailscale")
@@ -783,10 +812,27 @@ TTYD_CMD = (
 # Samba for file sharing (the File-shares card + default shares need it).
 SAMBA_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get install -y samba; "
              "systemctl enable --now smbd nmbd")
+# Syncthing: apt package + systemd user-template unit (syncthing@<user>.service,
+# shipped by the package). Two changes to its auto-generated config are needed
+# before it's actually useful here: (1) point its one default folder at
+# {STORAGE}/syncthing instead of ~/Sync, (2) bind the GUI to 0.0.0.0 instead of
+# the package default 127.0.0.1-only, so the "Open" link works from phones on
+# the LAN. Both edited after a brief first-run (which writes the initial
+# config), then the service is restarted to pick them up.
+SYNCTHING_CMD = (
+    "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
+    f"mkdir -p {STORAGE}/syncthing; chown root:{ADMIN_USER} {STORAGE}/syncthing; "
+    f"chmod 2775 {STORAGE}/syncthing; "
+    f"systemctl enable --now syncthing@{ADMIN_USER}.service; sleep 6; "
+    f"systemctl stop syncthing@{ADMIN_USER}.service; "
+    f"CONF=/home/{ADMIN_USER}/.config/syncthing/config.xml; "
+    f"[ -f \"$CONF\" ] && sed -i 's#path=\"[^\"]*\"#path=\"{STORAGE}/syncthing\"#' \"$CONF\"; "
+    f"[ -f \"$CONF\" ] && sed -i 's#<address>127.0.0.1:8384</address>#<address>0.0.0.0:8384</address>#' \"$CONF\"; "
+    f"systemctl start syncthing@{ADMIN_USER}.service")
 # ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
 # under a single 'setup' lock so two apt processes never collide on the dpkg
 # lock. `tailscale up` blocks until the end user signs in, holding the lock.
-SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, TAILSCALE_CMD, TS_UP_CMD])
+SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, SYNCTHING_CMD, TAILSCALE_CMD, TS_UP_CMD])
 
 
 @app.route("/")
@@ -800,6 +846,7 @@ def index():
     pw_not_set = os.path.exists(PW_FLAG)
     cockpit = cockpit_state()
     tailscale = tailscale_state()
+    syncthing = syncthing_state()
     # Kick off the ordered install chain (Cockpit -> ttyd -> Tailscale) only
     # AFTER the admin account exists. Starting it earlier turns on the 5s
     # progress-refresh, which would wipe the account form while it's being typed.
@@ -817,7 +864,7 @@ def index():
         password_not_set=pw_not_set,
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
         hostbase=suggested_hostname(),
-        cockpit=cockpit, tailscale=tailscale,
+        cockpit=cockpit, tailscale=tailscale, syncthing=syncthing,
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(), appver=WELCOME_VER, build=build_version(),
         online=have_internet(), ip=box_ip(),
@@ -828,11 +875,12 @@ def index():
 # so nothing ever runs two apt processes at once.
 @app.route("/install/cockpit", methods=["POST"])
 @app.route("/install/tailscale", methods=["POST"])
+@app.route("/install/syncthing", methods=["POST"])
 def install_apps():
     if not have_internet():
         return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
     start_install("setup", SETUP_CMD)
-    return redirect("/?msg=Installing apps… Cockpit first, then Tailscale.")
+    return redirect("/?msg=Installing apps… Cockpit, Syncthing, then Tailscale.")
 
 
 @app.route("/tailscale/up", methods=["POST"])
