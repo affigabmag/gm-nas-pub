@@ -97,9 +97,9 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .scanbar { width: 100%; height: 8px; border-radius: 4px; overflow: hidden;
       background: #0b1220; border: 1px solid var(--border); }
-    .scanbar-fill { width: 40%; height: 100%; border-radius: 4px;
+    .scanbar-fill { width: 0%; height: 100%; border-radius: 4px;
       background: linear-gradient(90deg, var(--accent), #6366f1);
-      animation: scanbar-slide 1.1s ease-in-out infinite; }
+      transition: width 0.2s linear; }
     @keyframes scanbar-slide {
       0%   { margin-left: 0%; width: 20%; }
       50%  { margin-left: 55%; width: 40%; }
@@ -252,7 +252,7 @@
       // on the LAN at all. If the router has WiFi client/AP isolation enabled,
       // no scan approach -- gateway-based or full-subnet -- gets past that;
       // it's a router setting, not something fixable client-side.
-      function scanSequential(btn, msg, log, onIdle) {
+      function scanSequential(btn, msg, log, onIdle, onProgress) {
         var AP_SUBNET = '192.168.42';
         function runOnce(onDone) {
           var found = false, probed = 0, started = Date.now();
@@ -260,11 +260,13 @@
             if (found) return; found = true;
             log('MATCH ' + ip + ' after ' + probed + ' probes, ' + Math.round((Date.now() - started) / 1000) + 's');
             if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b> — opening it now…';
+            if (onProgress) onProgress(probed, jobs.length);
             window.location.href = 'http://' + ip + '/';
           }
           function probe(ip) {
             if (found) return;
             probed++;
+            if (onProgress) onProgress(probed, jobs.length);
             log('probing ' + ip);
             var img = new Image();
             var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; next(); }, 1500);
@@ -448,8 +450,13 @@
           el.style.display = 'none';
           scanbarWrap.style.display = 'block';
         });
+        var scanbarFill = document.querySelector('#scanbarWrap .scanbar-fill');
         scanSequential(scanSeqBtn, document.getElementById('scanmsg'), scanLog, function () {
           scanbarWrap.style.display = 'none';
+        }, function (probed, total) {
+          if (scanbarFill && total) {
+            scanbarFill.style.width = Math.min(100, Math.round(probed / total * 100)) + '%';
+          }
         });
         var iv = setInterval(function () {
           left--;
