@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.157.20260723021713"   # bump when this menu changes
+MENU_VER="01.158.20260723022312"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -175,53 +175,29 @@ if command -v figlet >/dev/null 2>&1; then
           for (i = 1; i <= n; i++) {
               c = substr($0, i, 1)
               frac = (n > 1) ? (i - 1) / (n - 1) : 0
-              r = int(88  + frac * (236 - 88))
-              g = int(133 + frac * (64  - 133))
-              b = int(233 + frac * (156 - 233))
+              r = int(220 + frac * (236 - 220))
+              g = int(40  + frac * (64  - 40))
+              b = int(40  + frac * (156 - 40))
               line = line sprintf("\033[38;2;%d;%d;%dm%s", r, g, b, c)
           }
           print line "\033[0m"
         }')"
 fi
 
-# Print $1 (may contain ANSI color codes) then pad with spaces to $2
-# VISIBLE columns -- padding by raw string length would overcount by however
-# many invisible escape bytes it contains, misaligning whatever comes next.
-pad_to() {
-    local s="$1" w="$2" plain vis pad
-    plain="$(printf '%s' "$s" | sed -E 's/\x1b\[[0-9;]*m//g')"
-    vis=${#plain}
-    pad=$((w - vis)); [ "$pad" -lt 1 ] && pad=1
-    printf '%s%*s' "$s" "$pad" ''
-}
-
 header() {
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
     refresh_stats
     printf "${CY}%s${R}${EL}\n" "$(rule)"
-    # Header text (left column) and the GM-NAS banner (right column) share the
-    # SAME rows instead of the banner sitting above and doubling the header's
-    # vertical space. LEFTW is the fixed left-column width the banner starts
-    # after; ANSI-safe padding (pad_to) keeps that alignment regardless of
-    # how many color-escape bytes each line's text actually contains.
-    local LEFTW=54
-    local -a hrows=(
-        "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}  %b"
-        "  ${GY}Host${R} ${GR}$(H).local${R}   ${GY}IP${R} ${GR}${ip}${R}   ${GY}User${R} ${GR}$(whoami)${R}"
-        "  ${GY}Version${R} ${B}${GR}$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')${R}"
-        "  ${GY}${STATS_TXT}${R}"
-    )
-    hrows[0]="$(printf "${hrows[0]}" "$prov")"
-    local -a brows=()
-    if [ -n "$BANNER_TXT" ]; then
-        while IFS= read -r bl; do brows+=("$bl"); done <<< "$BANNER_TXT"
-    fi
-    local n=${#hrows[@]}; [ "${#brows[@]}" -gt "$n" ] && n=${#brows[@]}
-    local i
-    for ((i=0; i<n; i++)); do
-        printf '%s%s%s\n' "$(pad_to "${hrows[i]:-}" "$LEFTW")" "${brows[i]:-}" "${EL}"
-    done
+    # Banner on its own rows (natural width, no forced column alignment) --
+    # putting it side-by-side with the header text wrapped/distorted once
+    # their combined width exceeded the terminal's actual column count.
+    [ -n "$BANNER_TXT" ] && printf '%s\n' "$BANNER_TXT" | while IFS= read -r bl; do printf "  %s${EL}\n" "$bl"; done
+    # Header text compressed to exactly two rows.
+    printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}   %b   ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" \
+        "$prov" "$(H)" "$ip" "$(whoami)"
+    printf "  ${GY}Version${R} ${B}${GR}%s${R}${R}   ${GY}%s${R}${EL}\n" \
+        "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')" "$STATS_TXT"
     printf "${CY}%s${R}${EL}\n" "$(rule)"
 }
 
@@ -422,23 +398,24 @@ boxed_menu() {
     fi
     while true; do
         # dialog --menu has no native section-header concept -- insert the
-        # SAME SECBEFORE category labels the classic menu uses as inert rows
-        # (a distinct tag "hdr<i>" the dispatch below just ignores), giving
-        # the same grouped look inside the dialog UI.
+        # SAME SECBEFORE category labels the classic menu uses as inert rows.
+        # Empty tag ("") instead of a visible placeholder like "hdr0": dialog
+        # --menu shows tag and item side by side, so a literal tag string
+        # would show up right next to the header text.
         local rowcount=$((NUM - 1)) i   # -1: 'v' itself is excluded below
         for i in "${!SECBEFORE[@]}"; do rowcount=$((rowcount + 1)); done
         local args=(--title " gm-nas control menu " --menu "$(boxed_header_text)" "$(term_lines)" "$(term_cols)" "$rowcount")
         for ((i=0; i<NUM; i++)); do
             [ "${KEYS[i]}" = v ] && continue   # don't nest "Boxed menu" inside itself
             if [ -n "${SECBEFORE[$i]:-}" ]; then
-                args+=("hdr$i" "── ${SECBEFORE[$i]} ──")
+                args+=("" "── ${SECBEFORE[$i]} ──")
             fi
             args+=("${KEYS[i]}" "${TITLES[i]} -- ${DESCS[i]}")
         done
         local choice
         choice="$(dialog "${args[@]}" --stdout)" || return   # Cancel/Esc -> back to classic menu
         printf '\033[2J\033[H'
-        [[ "$choice" == hdr* ]] && continue   # header row selected -- no-op, redisplay
+        [ -z "$choice" ] && continue   # header row selected -- no-op, redisplay
         dispatch_action "$choice"
     done
 }
