@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.152.20260723002717"   # bump when this menu changes
+MENU_VER="01.153.20260723005336"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -52,6 +52,13 @@ run() { echo "+ $*"; "$@"; }
 # Resume install). $1 = box title, rest = the command to run.
 run_boxed() {
     local title="$1"; shift
+    # sudo's password prompt writes straight to the terminal, bypassing
+    # whatever it's piped into -- if it fires WHILE dialog owns the screen
+    # (below), the two fight over terminal control and the box renders as
+    # corrupted garbage. Refresh the cached sudo timestamp on a clean plain
+    # terminal FIRST; a no-op (instant, no prompt) if already cached, and
+    # only interactive here, before dialog ever takes over.
+    sudo -v 2>/dev/null
     if command -v dialog >/dev/null 2>&1; then
         { "$@"; } 2>&1 | dialog --title " $title " --programbox "$(term_lines)" "$(term_cols)"
     else
