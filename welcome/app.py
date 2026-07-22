@@ -34,7 +34,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.07.20260723003200"   # bump on every welcome-app change
+WELCOME_VER = "01.08.20260723003700"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -219,9 +219,9 @@ PAGE = """<!doctype html>
     folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
    <div class="links">
     <a class="linkbtn" href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">Get it for Android ↗</a>
-    <a class="linkbtn" href="https://apps.apple.com/app/mobius-sync/id1539203216" target="_blank">Get it for iPhone ↗</a>
+    <a class="linkbtn" href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank">Get it for iPhone ↗</a>
    </div>
-   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (Möbius Sync)
+   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (SyncTrain)
     occasionally to let it sync. Android's version can run continuously in the background.</p>
   </div>
   {% endif %}
