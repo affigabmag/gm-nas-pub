@@ -133,7 +133,8 @@ systemctl enable homenas-firstboot.service 2>/dev/null || true
 
 echo "-- chawan (cha) terminal web browser --"
 if ! command -v cha >/dev/null 2>&1; then
-    apt-get install -y nim git pkg-config libssl-dev zlib1g-dev >/dev/null 2>&1 || true
+    apt-get install -y nim git pkg-config libssl-dev zlib1g-dev \
+        libbrotli-dev libssh2-1-dev >/dev/null 2>&1 || true
     if command -v nim >/dev/null 2>&1; then
         rm -rf /tmp/chawan
         # chawan isn't a published nimble package -- build from source.
