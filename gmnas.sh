@@ -5,17 +5,18 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.156.20260723021203"   # bump when this menu changes
+MENU_VER="01.157.20260723021713"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
     R=$'\e[0m'; B=$'\e[1m'; DIM=$'\e[2m'
     CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'
     MG=$'\e[38;5;213m'; OR=$'\e[38;5;215m'; RD=$'\e[38;5;203m'; WH=$'\e[97m'; GY=$'\e[38;5;245m'
+    BL=$'\e[38;5;75m'
     HL=$'\e[48;2;102;102;102m\e[38;2;255;255;255m'   # highlight: #666666 gray bg, #ffffff white text
     EL=$'\e[K'                       # erase to end of line (flicker-free redraw)
 else
-    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=; EL=
+    R=; B=; DIM=; CY=; GR=; YL=; MG=; OR=; RD=; WH=; GY=; HL=; EL=; BL=
 fi
 
 H() { hostname 2>/dev/null; }
@@ -227,7 +228,7 @@ header() {
 # item <key> <title> <desc>
 item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$2" "$3"; }
 # sec <label>
-sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
+sec()  { printf "${EL}\n %s${B}%s${R}${EL}\n" "${2:-$MG}" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
 KEYS=(   a b c d e f z g x h w i j s u k t l m n v o r p q )
@@ -253,6 +254,9 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
                        [14]="INSTALL & UPDATE" [21]="SHELL & POWER" )
+# Each section header gets its own color instead of all five sharing one --
+# real variety, not just decoration.
+declare -A SECCOLOR=( [0]="$CY" [7]="$BL" [11]="$MG" [14]="$YL" [21]="$RD" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -261,7 +265,7 @@ render() {
     header
     local i
     for ((i=0; i<NUM; i++)); do
-        [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}"
+        [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}" "${SECCOLOR[$i]:-}"
         if [ "$i" -eq "$SEL" ]; then
             printf "${HL}${B}   %s  %-26s %-40s${EL}${R}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         else
