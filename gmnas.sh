@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.145.20260722210146"   # bump when this menu changes
+MENU_VER="01.146.20260722210627"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -45,6 +45,20 @@ run_helper() {
     fi
 }
 run() { echo "+ $*"; "$@"; }
+
+# Show a command's output live inside a centered bordered box (dialog's
+# --programbox), instead of it scrolling raw in the terminal. Falls back to
+# plain output + pause if dialog isn't installed yet (e.g. offline, before
+# Resume install). $1 = box title, rest = the command to run.
+run_boxed() {
+    local title="$1"; shift
+    if command -v dialog >/dev/null 2>&1; then
+        { "$@"; } 2>&1 | dialog --title " $title " --programbox "$(term_lines)" "$(term_cols)"
+    else
+        "$@"
+        pause
+    fi
+}
 
 # Full-proof prerequisite check for the First-time wizard (GMNas-Setup AP).
 # The AP needs NetworkManager to own the WiFi device (wifi-connect + nmcli
@@ -100,6 +114,37 @@ refresh_stats() {
     mem="$(free -m 2>/dev/null | awk '/^Mem:/{printf "%d/%dMB", $3,$2}')"
     disk="$(df -h --output=target,used,size 2>/dev/null | awk '$1=="/"||$1=="/srv/storage"{printf "%s %s/%s  ", $1,$2,$3}')"
     STATS_TXT="CPU ${cpu:-?}   MEM ${mem:-?}   DISK ${disk:-?}"
+}
+
+# Multi-statement action bodies, factored out so run_boxed (which takes a
+# single command) can pipe their combined output into a bordered box.
+act_a() { sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; }
+act_c() { if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; }
+act_e() {
+    echo "--- /var/log/gm-nas/ ---"; ls -l /var/log/gm-nas/ 2>/dev/null || echo "(no gm-nas logs yet)"
+    echo; echo "--- firstboot-wifi.log (last 50) ---"
+    sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"
+}
+act_x() {
+    echo "Checking internet…"; echo
+    local ipaddr gw
+    ipaddr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    gw="$(ip route 2>/dev/null | awk '/^default/{print $3; exit}')"
+    echo " This box IP : ${ipaddr:-<none>}"
+    echo " Interfaces  : $(ip -brief link 2>/dev/null | awk '$1!="lo"{printf "%s(%s) ",$1,$2}')"
+    echo " Gateway     : ${gw:-<none>}"
+    if net_online; then
+        echo " Internet    : ONLINE"
+        if getent hosts github.com >/dev/null 2>&1; then
+            echo " DNS         : OK (github.com resolves)"
+        else
+            echo " DNS         : FAIL (online but name lookup broken)"
+        fi
+    else
+        echo " Internet    : OFFLINE (no route out)"
+        [ -z "$gw" ] && echo "   note: no default gateway -- WiFi/DHCP may not have finished."
+        echo "   -> Connect WiFi (menu: Connect to WiFi) or plug a phone USB tether."
+    fi
 }
 
 header() {
@@ -184,49 +229,27 @@ while true; do
                              # output otherwise scrolls the old menu content
                              # up and off-screen instead of starting fresh
     case "$c" in
-        a|A) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
-        b|B) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
-        c|C) if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; pause ;;
-        d|D) sudo grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30; pause ;;
-        e|E) echo "--- /var/log/gm-nas/ ---"; ls -l /var/log/gm-nas/ 2>/dev/null || echo "(no gm-nas logs yet)"
-             echo; echo "--- firstboot-wifi.log (last 50) ---"
-             sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"; pause ;;
+        a|A) run_boxed "Device info" act_a ;;
+        b|B) run_boxed "Status / diag" bash -c 'command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug' ;;
+        c|C) run_boxed "Setup log" act_c ;;
+        d|D) run_boxed "Install error log" sudo bash -c 'grep -iE "command_[0-9]|fail|error" /var/log/installer/subiquity-server-debug.log 2>/dev/null | tail -30' ;;
+        e|E) run_boxed "gm-nas logs" act_e ;;
         f|F) btop ;;
-        z|Z) run_helper gm-benchmark; pause ;;
+        z|Z) run_boxed "Benchmark" run_helper gm-benchmark ;;
         g|G) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
-           run_helper join-wifi "$s" "$p"
-           echo
+           run_boxed "Connect to WiFi" run_helper join-wifi "$s" "$p"
            echo "A reboot is required to leave AP mode and connect to '$s'."
            echo "Reboot now? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then sudo reboot; else pause; fi ;;
-        x|X) echo "Checking internet…"; echo
-             ipaddr="$(hostname -I 2>/dev/null | awk '{print $1}')"
-             gw="$(ip route 2>/dev/null | awk '/^default/{print $3; exit}')"
-             echo " This box IP : ${ipaddr:-<none>}"
-             echo " Interfaces  : $(ip -brief link 2>/dev/null | awk '$1!="lo"{printf "%s(%s) ",$1,$2}')"
-             echo " Gateway     : ${gw:-<none>}"
-             if net_online; then
-                 echo " Internet    : ${GR}ONLINE${R}"
-                 if getent hosts github.com >/dev/null 2>&1; then
-                     echo " DNS         : ${GR}OK${R} (github.com resolves)"
-                 else
-                     echo " DNS         : ${YL}FAIL${R} (online but name lookup broken)"
-                 fi
-             else
-                 echo " Internet    : ${RD}OFFLINE${R} (no route out)"
-                 [ -z "$gw" ] && echo "   note: no default gateway — WiFi/DHCP may not have finished."
-                 echo "   -> Connect WiFi (menu: Connect to WiFi) or plug a phone USB tether."
-             fi
-             pause ;;
+        x|X) run_boxed "Check internet" act_x ;;
         h|H) if ! check_ap_prereqs; then pause; continue; fi
            echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
-             run_helper reset-setup
-             echo
+             run_boxed "First-time wizard" run_helper reset-setup
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
              echo "      Password: gmnas2026"
@@ -244,8 +267,7 @@ while true; do
            printf "${RD}Continue? [y/N]${R} "
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
-             run_helper factory-reset
-             echo
+             run_boxed "Factory reset" run_helper factory-reset
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
              echo "      Password: gmnas2026"
@@ -259,8 +281,7 @@ while true; do
            echo "  Welcome  : http://$h"
            echo "  Cockpit  : https://$h:9090"
            echo "  Terminal : http://$h:7681"; pause ;;
-        j|J) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
-           echo "restarted."; pause ;;
+        j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
         y|Y) if command -v w3m >/dev/null 2>&1; then
                read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
                w3m "$u"
@@ -280,17 +301,17 @@ while true; do
            printf "${MG}${B}[Step 1/3] Connect to WiFi${R}\n"
            read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
-           run_helper join-wifi "$s" "$p"
+           run_boxed "Connect to WiFi" run_helper join-wifi "$s" "$p"
            echo "Waiting a few seconds for the connection to settle..."
            sleep 5
            echo
            printf "${MG}${B}[Step 2/3] Resume install${R}\n"
            if net_online; then
              echo "Internet OK -- resuming install online..."
-             run_helper gm-install-all
+             run_boxed "Resume install" run_helper gm-install-all
            else
              echo "No internet yet -- trying USB tether resume install..."
-             run_helper gm-resume-usb
+             run_boxed "Resume install (USB tether)" run_helper gm-resume-usb
            fi
            echo
            printf "${MG}${B}[Step 3/3] First-time wizard${R}\n"
@@ -302,8 +323,7 @@ while true; do
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
-             run_helper reset-setup
-             echo
+             run_boxed "First-time wizard" run_helper reset-setup
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
              echo "      Password: gmnas2026"
@@ -314,11 +334,11 @@ while true; do
              echo "  =========================================="
            else echo "cancelled."; fi
            pause ;;
-        k|K) run_helper gm-install-all; pause ;;
-        t|T) run_helper gm-resume-usb; pause ;;
-        l|L) run_helper gm-update; pause ;;
-        m|M) run_helper gm-usb mount; pause ;;
-        n|N) run_helper gm-usb apply; pause ;;
+        k|K) run_boxed "Resume install (online)" run_helper gm-install-all ;;
+        t|T) run_boxed "Resume install (USB tether)" run_helper gm-resume-usb ;;
+        l|L) run_boxed "Update from GitHub" run_helper gm-update ;;
+        m|M) run_boxed "Mount & view files" run_helper gm-usb mount ;;
+        n|N) run_boxed "Apply Ventoy edits" run_helper gm-usb apply ;;
         o|O) echo "Type 'exit' to return to the menu."; bash ;;
         r|R) printf "${YL}Reboot the box now? [y/N] ${R}"; read -rsn1 yn; echo
              if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo reboot; else echo "cancelled"; pause; fi ;;
