@@ -35,7 +35,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.15.20260723023800"   # bump on every welcome-app change
+WELCOME_VER = "01.16.20260723024500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -947,6 +947,22 @@ def tailscale_up():
 
 
 FACTORY_RESET_CMD = "sleep 1; sudo /usr/local/bin/factory-reset"
+FACTORY_RESET_LOG = "/var/log/gm-nas/factory-reset.log"
+
+# Known unconditional steps, in order, matched against factory-reset.sh's own
+# log() lines -- drives the checklist + progress bar. Some of the script's
+# own log lines are conditional (e.g. "removed admin account" only fires if
+# one existed) so the fraction is an approximation, not an exact per-line map.
+FACTORY_RESET_STEPS = [
+    ("stopping welcome app", "Stopping the welcome app"),
+    ("cleared shares.json", "Resetting shares + Samba config"),
+    ("erasing all user files", "Erasing files in storage"),
+    ("storage partition cleared", "Storage reset to factory state"),
+    ("password-not-set flag restored", "Restoring first-time setup flow"),
+    ("hostname reset", "Resetting hostname"),
+    ("disconnecting WiFi", "Disconnecting WiFi"),
+    ("restarting first-boot setup service", "Launching the setup AP"),
+]
 
 FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -955,10 +971,64 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
  text-align:center;padding:48px 20px">
  <div style="font-size:44px;margin-bottom:12px">⚠️</div>
  <h2 style="margin:0 0 10px">Factory Resetting…</h2>
- <p style="color:#94a3b8;line-height:1.7">Your gm-nas is erasing all files, accounts, and shares.<br><br>
-  The system will reboot and replays the entire first-boot setup.<br><br>
-  On your phone, connect to <b style="color:#f1f5f9">GMNas-Setup</b><br>
-  and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to reconfigure.</p>
+ <p id="frMsg" style="color:#94a3b8;line-height:1.7">Erasing all files, accounts, and shares, then switching
+  to setup mode.</p>
+ <div style="width:100%;max-width:360px;margin:18px auto;height:8px;border-radius:4px;overflow:hidden;
+      background:#1e293b;border:1px solid #334155">
+  <div id="frBar" style="width:0%;height:100%;border-radius:4px;background:linear-gradient(90deg,#60a5fa,#f472b6);
+       transition:width .3s linear"></div>
+ </div>
+ <ul id="frSteps" style="list-style:none;padding:0;margin:18px auto;max-width:360px;text-align:left;
+     font-size:14px;color:#94a3b8;line-height:2"></ul>
+ <div id="frDone" style="display:none">
+  <p style="color:#f1f5f9;line-height:1.7">Your gm-nas has switched to <b>setup mode</b>.<br><br>
+   On your phone, connect to <b>GMNas-Setup</b><br>
+   and open <b>http://192.168.42.1</b><br>to reconfigure.</p>
+ </div>
+<script>
+ // Each entry: [substring to match in the log, human label to display].
+ // Matching against the LOG's own text (factory-reset.sh's log() lines),
+ // not the display label -- they read differently on purpose.
+ var STEPS = __STEPS_JSON__;
+ var steps = document.getElementById('frSteps');
+ STEPS.forEach(function(s){
+   var li = document.createElement('li');
+   li.textContent = '○ ' + s[1];
+   steps.appendChild(li);
+ });
+ var done = 0, failures = 0;
+ function finish(){
+   clearInterval(iv);
+   document.getElementById('frBar').style.width = '100%';
+   document.getElementById('frDone').style.display = 'block';
+ }
+ var iv = setInterval(function(){
+   fetch('/factory-reset/log').then(function(r){ return r.text(); }).then(function(text){
+     failures = 0;
+     var newDone = 0;
+     for (var i = 0; i < STEPS.length; i++) {
+       if (text.indexOf(STEPS[i][0]) !== -1) newDone = i + 1;
+     }
+     for (var j = 0; j < STEPS.length; j++) {
+       steps.children[j].textContent = (j < newDone ? '✓ ' : '○ ') + STEPS[j][1];
+       steps.children[j].style.color = j < newDone ? '#f1f5f9' : '#94a3b8';
+     }
+     done = newDone;
+     document.getElementById('frBar').style.width = Math.round(done / STEPS.length * 100) + '%';
+     // The AP is about to take over the radio once this step's line
+     // appears -- this box's own IP goes away any moment now, so further
+     // polling is expected to fail. Show completion now rather than
+     // waiting on a request that will never successfully return.
+     if (newDone >= STEPS.length) finish();
+   }).catch(function(){
+     failures++;
+     // A few consecutive failures this late in the process means the WiFi
+     // just dropped because the setup AP took over -- that's success, not
+     // an error.
+     if (failures >= 3 && done >= STEPS.length - 2) finish();
+   });
+ }, 1000);
+</script>
 </body></html>"""
 
 
@@ -968,7 +1038,16 @@ def factory_reset():
     if not verify_password(admin_username(), password):
         return redirect("/?cls=err&msg=Wrong password — factory reset cancelled.")
     subprocess.Popen(["/bin/bash", "-c", FACTORY_RESET_CMD], start_new_session=True)
-    return FACTORY_RESET_PAGE
+    return FACTORY_RESET_PAGE.replace("__STEPS_JSON__", json.dumps(FACTORY_RESET_STEPS))
+
+
+@app.route("/factory-reset/log")
+def factory_reset_log():
+    try:
+        with open(FACTORY_RESET_LOG) as f:
+            return f.read()
+    except OSError:
+        return ""
 
 
 @app.route("/gmnas-id.png")
