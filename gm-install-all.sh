@@ -131,6 +131,26 @@ retry curl -fsSL "$BASE/files/homenas-firstboot.service" -o /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable homenas-firstboot.service 2>/dev/null || true
 
+echo "-- chawan (cha) terminal web browser --"
+if ! command -v cha >/dev/null 2>&1; then
+    apt-get install -y nim git pkg-config libssl-dev zlib1g-dev >/dev/null 2>&1 || true
+    if command -v nimble >/dev/null 2>&1; then
+        retry nimble install -y chawan >/dev/null 2>&1 || true
+    fi
+    if ! command -v cha >/dev/null 2>&1 && command -v nim >/dev/null 2>&1; then
+        rm -rf /tmp/chawan
+        retry git clone https://git.sr.ht/~bptato/chawan /tmp/chawan
+        ( cd /tmp/chawan && make submodule >/dev/null 2>&1; make ) || true
+        make -C /tmp/chawan install PREFIX=/usr/local || true
+    fi
+    [ -x "$HOME/.nimble/bin/cha" ] && ln -sf "$HOME/.nimble/bin/cha" /usr/local/bin/cha
+fi
+if command -v cha >/dev/null 2>&1; then
+    echo "  chawan installed: $(command -v cha)"
+else
+    echo "  WARNING: chawan install failed -- 'Web browser' menu item won't work"
+fi
+
 echo "-- welcome app --"
 mkdir -p /usr/local/lib/gmnas-welcome
 retry curl -fsSL "$BASE/welcome/app.py"              -o /usr/local/lib/gmnas-welcome/app.py

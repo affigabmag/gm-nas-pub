@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.130.20260722132046"   # bump when this menu changes
+MENU_VER="01.131.20260722153006"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -94,9 +94,9 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f z g x h w i j k t l m n o r p q )
+KEYS=(   a b c d e f z g x h w i j y k t l m n o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
-         "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Resume install (online)" \
+         "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Web browser" "Resume install (online)" \
          "Resume install (USB tether)" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
          "Reboot" "Power off" "Quit" )
@@ -104,13 +104,13 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows Experience Index style)" \
          "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
-         "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" \
+         "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" "chawan (cha), terminal browser" \
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
          "download rest over a phone USB tether (if WiFi unavailable)" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
          "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
-                       [13]="INSTALL & UPDATE" [18]="SHELL & POWER" )
+                       [14]="INSTALL & UPDATE" [19]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -226,6 +226,13 @@ while true; do
            echo "  Terminal : http://$h:7681"; pause ;;
         j|J) sudo systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null
            echo "restarted."; pause ;;
+        y|Y) if command -v cha >/dev/null 2>&1; then
+               read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
+               cha "$u"
+             else
+               echo "chawan (cha) not installed -- run ${YL}Resume install (online)${R} first."
+               pause
+             fi ;;
         k|K) run_helper gm-install-all; pause ;;
         t|T) run_helper gm-resume-usb; pause ;;
         l|L) run_helper gm-update; pause ;;
