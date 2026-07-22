@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.149.20260722220001"   # bump when this menu changes
+MENU_VER="01.150.20260722233644"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -340,6 +340,21 @@ dispatch_action() {
 # renderer. Every action's output already goes through run_boxed, so once
 # selection is boxed too, the whole experience stays inside dialog widgets.
 # Falls back with a message if dialog isn't installed yet (offline phase).
+# Plain-text (no ANSI colors -- dialog renders its own) version of the same
+# host/IP/user/version/stats info the classic header() shows, used as the
+# dialog --menu's body text so the boxed UI isn't missing that at-a-glance
+# status the classic menu always has on screen.
+boxed_header_text() {
+    local ip prov
+    ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
+    if [ -f /etc/homenas/provisioned ]; then prov="online"; else prov="setup mode"; fi
+    refresh_stats
+    printf 'Host %s.local   IP %s   User %s   [%s]\nVersion %s\n%s\n' \
+        "$(H)" "$ip" "$(whoami)" "$prov" \
+        "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')" \
+        "$STATS_TXT"
+}
+
 boxed_menu() {
     if ! command -v dialog >/dev/null 2>&1; then
         echo "dialog not installed -- run Resume install (online) first."
@@ -347,7 +362,7 @@ boxed_menu() {
         return
     fi
     while true; do
-        local args=(--title " gm-nas control menu " --menu "" "$(term_lines)" "$(term_cols)" $((NUM - 1)))
+        local args=(--title " gm-nas control menu " --menu "$(boxed_header_text)" "$(term_lines)" "$(term_cols)" $((NUM - 1)))
         local i
         for ((i=0; i<NUM; i++)); do
             [ "${KEYS[i]}" = v ] && continue   # don't nest "Boxed menu" inside itself

@@ -132,12 +132,6 @@ retry curl -fsSL "$BASE/files/homenas-firstboot.service" -o /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable homenas-firstboot.service 2>/dev/null || true
 
-if command -v cha >/dev/null 2>&1; then
-    echo "  chawan installed: $(command -v cha)"
-else
-    echo "  WARNING: chawan install failed -- 'Web browser' menu item won't work"
-fi
-
 echo "-- welcome app --"
 mkdir -p /usr/local/lib/gmnas-welcome
 retry curl -fsSL "$BASE/welcome/app.py"              -o /usr/local/lib/gmnas-welcome/app.py
