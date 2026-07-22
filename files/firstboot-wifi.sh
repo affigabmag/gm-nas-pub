@@ -91,10 +91,17 @@ wifi_profiles() {
 BEFORE="$(wifi_profiles)"
 log "existing wifi profiles before portal: [$(echo "$BEFORE" | tr '\n' ',')]"
 
-log "launching wifi-connect (AP '$PORTAL_SSID', portal on :80)..."
+log "launching wifi-connect (AP '$PORTAL_SSID', portal on :80, interface $WIFI_DEV)..."
+# --portal-interface is REQUIRED on some USB WiFi adapters: wifi-connect's
+# own device auto-detection reads the NetworkManager D-Bus device-type enum,
+# and on this hardware that comes back as an unrecognized numeric value
+# ("Undefined device type: 32") -- it then reports "Cannot find a WiFi
+# device" and exits immediately, even though the device is real and managed.
+# Passing the interface name explicitly skips that broken detection path.
 "$WIFI_CONNECT" \
     --portal-ssid "$PORTAL_SSID" \
     --portal-passphrase "$PORTAL_PASSPHRASE" \
+    --portal-interface "$WIFI_DEV" \
     --ui-directory "$UI_DIR" >>"$LOG" 2>&1 &
 WC_PID=$!
 log "wifi-connect started, pid=$WC_PID"

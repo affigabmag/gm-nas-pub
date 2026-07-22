@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.132.20260722154143"   # bump when this menu changes
+MENU_VER="01.134.20260722180927"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -56,7 +56,15 @@ check_ap_prereqs() {
     local missing=()
     command -v nmcli >/dev/null 2>&1 || missing+=("network-manager (nmcli) not installed")
     systemctl is-active --quiet NetworkManager 2>/dev/null || missing+=("NetworkManager service not running")
-    nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$' || missing+=("no WiFi device visible to NetworkManager (it may still be owned by networkd — reboot after Resume install to pick this up)")
+    local wifi_state
+    wifi_state="$(nmcli -t -f TYPE,STATE device 2>/dev/null | awk -F: '$1=="wifi"{print $2; exit}')"
+    if [ -z "$wifi_state" ]; then
+        missing+=("no WiFi device visible to NetworkManager at all")
+    elif [ "$wifi_state" = "unmanaged" ]; then
+        missing+=("WiFi device exists but NetworkManager doesn't manage it (still owned by networkd — run Resume install again to migrate it)")
+    elif [ "$wifi_state" = "unavailable" ]; then
+        missing+=("WiFi device exists but is unavailable to NetworkManager (state: unavailable — try a reboot)")
+    fi
     [ -x /usr/local/lib/wifi-connect/wifi-connect ] || missing+=("wifi-connect binary not installed")
     [ -f /usr/local/lib/wifi-connect/ui/index.html ] || missing+=("setup-portal UI (index.html) not installed")
     [ -f /etc/systemd/system/homenas-firstboot.service ] || missing+=("homenas-firstboot.service not installed")
