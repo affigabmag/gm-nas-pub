@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.143.20260722205458"   # bump when this menu changes
+MENU_VER="01.144.20260722205917"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -159,7 +159,9 @@ while true; do
         "")  c="${KEYS[$SEL]}" ;;   # Enter -> run the highlighted item
         *)   c="$k" ;;              # letter -> run it directly
     esac
-    echo
+    printf '\033[2J\033[H'   # full clear before running the action -- long
+                             # output otherwise scrolls the old menu content
+                             # up and off-screen instead of starting fresh
     case "$c" in
         a|A) sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not available"; pause ;;
         b|B) command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug; pause ;;
