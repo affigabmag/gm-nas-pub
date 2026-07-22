@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.146.20260722210627"   # bump when this menu changes
+MENU_VER="01.149.20260722220001"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -165,13 +165,14 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f z g x h w i j y s u k t l m n o r p q )
+KEYS=(   a b c d e f z g x h w i j y s u k t l m n v o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
          "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" \
          "Web browser (w3m)" "Web browser (lynx)" \
          "Auto-complete install" "Resume install (online)" \
          "Resume install (USB tether)" \
-         "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
+         "Update from GitHub" "Mount & view files" "Apply Ventoy edits" \
+         "Boxed menu" "Open a shell" \
          "Reboot" "Power off" "Quit" )
 DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
          "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows Experience Index style)" \
@@ -183,7 +184,8 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
          "download rest over a phone USB tether (if WiFi unavailable)" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
-         "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
+         "same menu, everything inside dialog boxes" "shell as $(whoami)" \
+         "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
                        [15]="INSTALL & UPDATE" [21]="SHELL & POWER" )
 NUM=${#KEYS[@]}
@@ -206,28 +208,11 @@ render() {
     printf "${EL} ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${GR}Esc/q${R} ${DIM}quit${R}   ${DIM}or a letter${R} ${GR}❯${R} "
 }
 
-# clear the screen ONCE on entry; render() then redraws in place each keystroke
-printf '\033[2J\033[H'
-# NOTE: no upfront "sudo -v" here -- it would prompt for a password before the
-# menu even shows. Actions that need root call sudo themselves (and sudo then
-# caches the credential for a few minutes).
-while true; do
-    render
-    # -t 60: wake on its own every minute (even with no keypress) so the
-    # CPU/mem/disk stats line actually refreshes while the menu sits idle,
-    # not just when the user happens to press a key.
-    if ! IFS= read -rsn1 -t 60 k; then continue; fi
-    if [ "$k" = $'\e' ]; then IFS= read -rsn2 -t 0.05 rest; k="$k$rest"; fi
-    case "$k" in
-        $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
-        $'\e[B'|$'\eOB') SEL=$(( (SEL + 1) % NUM )); continue ;;
-        $'\e') echo; exit 0 ;;      # bare Esc -> quit (same as q)
-        "")  c="${KEYS[$SEL]}" ;;   # Enter -> run the highlighted item
-        *)   c="$k" ;;              # letter -> run it directly
-    esac
-    printf '\033[2J\033[H'   # full clear before running the action -- long
-                             # output otherwise scrolls the old menu content
-                             # up and off-screen instead of starting fresh
+# Runs the action for a given key. Factored out of the classic arrow-key
+# loop so the all-dialog "Boxed menu" (see boxed_menu below) can dispatch
+# through the exact same logic instead of duplicating it.
+dispatch_action() {
+    local c="$1"
     case "$c" in
         a|A) run_boxed "Device info" act_a ;;
         b|B) run_boxed "Status / diag" bash -c 'command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug' ;;
@@ -244,7 +229,7 @@ while true; do
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then sudo reboot; else pause; fi ;;
         x|X) run_boxed "Check internet" act_x ;;
-        h|H) if ! check_ap_prereqs; then pause; continue; fi
+        h|H) if ! check_ap_prereqs; then pause; return; fi
            echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
@@ -284,14 +269,14 @@ while true; do
         j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
         y|Y) if command -v w3m >/dev/null 2>&1; then
                read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
-               w3m "$u"
+               w3m -O UTF-8 "$u"
              else
                echo "w3m not installed -- run ${YL}Resume install (online)${R} first."
                pause
              fi ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
                read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
-               lynx "$u"
+               lynx -display_charset=UTF-8 -assume_charset=UTF-8 "$u"
              else
                echo "lynx not installed -- run ${YL}Resume install (online)${R} first."
                pause
@@ -317,7 +302,7 @@ while true; do
            printf "${MG}${B}[Step 3/3] First-time wizard${R}\n"
            if ! check_ap_prereqs; then
              echo "Auto-complete stopped before the First-time wizard (see above)."
-             pause; continue
+             pause; return
            fi
            echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
@@ -345,6 +330,57 @@ while true; do
         p|P) printf "${RD}Power OFF the box? It will NOT come back without pressing the physical power button. [y/N] ${R}"; read -rsn1 yn; echo
              if [ "$yn" = y ] || [ "$yn" = Y ]; then sudo poweroff; else echo "cancelled"; pause; fi ;;
         q|Q) exit 0 ;;
+        v|V) boxed_menu ;;
         *) ;;
     esac
+}
+
+# All-dialog alternative UI: same actions as the classic menu, but selection
+# itself happens inside a dialog --menu box instead of the custom arrow-key
+# renderer. Every action's output already goes through run_boxed, so once
+# selection is boxed too, the whole experience stays inside dialog widgets.
+# Falls back with a message if dialog isn't installed yet (offline phase).
+boxed_menu() {
+    if ! command -v dialog >/dev/null 2>&1; then
+        echo "dialog not installed -- run Resume install (online) first."
+        pause
+        return
+    fi
+    while true; do
+        local args=(--title " gm-nas control menu " --menu "" "$(term_lines)" "$(term_cols)" $((NUM - 1)))
+        local i
+        for ((i=0; i<NUM; i++)); do
+            [ "${KEYS[i]}" = v ] && continue   # don't nest "Boxed menu" inside itself
+            args+=("${KEYS[i]}" "${TITLES[i]} -- ${DESCS[i]}")
+        done
+        local choice
+        choice="$(dialog "${args[@]}" --stdout)" || return   # Cancel/Esc -> back to classic menu
+        printf '\033[2J\033[H'
+        dispatch_action "$choice"
+    done
+}
+
+# clear the screen ONCE on entry; render() then redraws in place each keystroke
+printf '\033[2J\033[H'
+# NOTE: no upfront "sudo -v" here -- it would prompt for a password before the
+# menu even shows. Actions that need root call sudo themselves (and sudo then
+# caches the credential for a few minutes).
+while true; do
+    render
+    # -t 60: wake on its own every minute (even with no keypress) so the
+    # CPU/mem/disk stats line actually refreshes while the menu sits idle,
+    # not just when the user happens to press a key.
+    if ! IFS= read -rsn1 -t 60 k; then continue; fi
+    if [ "$k" = $'\e' ]; then IFS= read -rsn2 -t 0.05 rest; k="$k$rest"; fi
+    case "$k" in
+        $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
+        $'\e[B'|$'\eOB') SEL=$(( (SEL + 1) % NUM )); continue ;;
+        $'\e') echo; exit 0 ;;      # bare Esc -> quit (same as q)
+        "")  c="${KEYS[$SEL]}" ;;   # Enter -> run the highlighted item
+        *)   c="$k" ;;              # letter -> run it directly
+    esac
+    printf '\033[2J\033[H'   # full clear before running the action -- long
+                             # output otherwise scrolls the old menu content
+                             # up and off-screen instead of starting fresh
+    dispatch_action "$c"
 done
