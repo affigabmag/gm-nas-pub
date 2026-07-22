@@ -35,7 +35,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.14.20260723015500"   # bump on every welcome-app change
+WELCOME_VER = "01.15.20260723023800"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -600,8 +600,21 @@ def _paths(appname):
 
 
 def is_installing(appname):
+    """True only if the lock exists AND the process that made it is still
+    alive. A lock is written with that process's PID (see start_install); if
+    that PID is gone (crashed, or killed from outside e.g. manual SSH
+    debugging) the lock is stale and self-heals here instead of silently
+    blocking every future install attempt forever with no error shown."""
     lock, _ = _paths(appname)
-    return os.path.exists(lock)
+    try:
+        with open(lock) as f:
+            pid = int(f.read().strip())
+    except (OSError, ValueError):
+        return os.path.exists(lock)  # empty/unreadable lock -- treat as busy
+    if os.path.exists(f"/proc/{pid}"):
+        return True
+    os.remove(lock)  # stale -- the process behind it is gone
+    return False
 
 
 def start_install(appname, cmd):
@@ -610,7 +623,7 @@ def start_install(appname, cmd):
     os.makedirs(RUN_DIR, exist_ok=True)
     os.makedirs(LOG_DIR, exist_ok=True)
     lock, log = _paths(appname)
-    if os.path.exists(lock):
+    if is_installing(appname):
         return  # already running
     # Create the lock atomically; if we lose the race, bail.
     try:
@@ -619,7 +632,15 @@ def start_install(appname, cmd):
     except FileExistsError:
         return
     wrapped = "{ %s ; } >>'%s' 2>&1; rm -f '%s'" % (cmd, log, lock)
-    subprocess.Popen(["/bin/bash", "-c", wrapped], start_new_session=True)
+    p = subprocess.Popen(["/bin/bash", "-c", wrapped], start_new_session=True)
+    # Write the wrapper's own PID (not the exec'd cmd's) into the
+    # already-claimed lock, so is_installing() can tell a genuinely stuck
+    # job from an orphaned lock left by a process that no longer exists.
+    try:
+        with open(lock, "w") as f:
+            f.write(str(p.pid))
+    except OSError:
+        pass
 
 
 def cockpit_state():
@@ -925,7 +946,7 @@ def tailscale_up():
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
 
 
-FACTORY_RESET_CMD = "sleep 1; sudo /usr/local/bin/factory-reset.sh"
+FACTORY_RESET_CMD = "sleep 1; sudo /usr/local/bin/factory-reset"
 
 FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
