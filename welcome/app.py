@@ -34,7 +34,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.10.20260723005200"   # bump on every welcome-app change
+WELCOME_VER = "01.11.20260723010500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -228,14 +228,12 @@ PAGE = """<!doctype html>
    occasionally to let it sync. Android's version can run continuously in the background.</p>
   {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
- </div>
-
- <div class="card"><h2>Manage</h2>
-  <div class="links">
-   <a class="svclink" data-proto="https" data-port="9090" href="https://{{ host }}:9090" target="_blank">Cockpit admin ↗</a>
-   <a class="svclink" data-proto="http" data-port="7681" href="http://{{ host }}:7681" target="_blank">Terminal ↗</a>
+  <hr style="border-color:var(--border);margin:16px 0">
+  <div class="app">
+   <span class="name">Terminal</span>
+   <span class="grow"><span class="desc">A shell in your browser</span></span>
+   <a class="linkbtn svclink" data-proto="http" data-port="7681" href="http://{{ host }}:7681" target="_blank">Open ↗</a>
   </div>
-  <p class="hint">Cockpit: system, storage, logs, updates. Terminal: a shell in your browser.</p>
  </div>
 
  <div class="card"><h2>File shares</h2>
@@ -819,8 +817,19 @@ SAMBA_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get install -y samba; "
 # before it's actually useful here: (1) point its one default folder at
 # {STORAGE}/syncthing instead of ~/Sync, (2) bind the GUI to 0.0.0.0 instead of
 # the package default 127.0.0.1-only, so the "Open" link works from phones on
-# the LAN. Both edited after a brief first-run (which writes the initial
-# config), then the service is restarted to pick them up.
+# the LAN. Edited via a real XML parse (not sed/regex against the raw text --
+# a sed pattern that doesn't exactly match the generated file's formatting
+# silently no-ops, leaving the GUI unreachable with no error at all, which is
+# exactly what happened the first time this used sed).
+SYNCTHING_PATCH_PY = (
+    "import xml.etree.ElementTree as ET;"
+    f"p='/home/{ADMIN_USER}/.config/syncthing/config.xml';"
+    "t=ET.parse(p); r=t.getroot();"
+    "g=r.find('gui');"
+    "(g is not None) and g.find('address') is not None and setattr(g.find('address'),'text','0.0.0.0:8384');"
+    "f=r.find('folder');"
+    f"(f is not None) and f.set('path','{STORAGE}/syncthing');"
+    "t.write(p)")
 SYNCTHING_CMD = (
     "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
     f"mkdir -p {STORAGE}/syncthing; chown root:{ADMIN_USER} {STORAGE}/syncthing; "
@@ -828,8 +837,7 @@ SYNCTHING_CMD = (
     f"systemctl enable --now syncthing@{ADMIN_USER}.service; sleep 6; "
     f"systemctl stop syncthing@{ADMIN_USER}.service; "
     f"CONF=/home/{ADMIN_USER}/.config/syncthing/config.xml; "
-    f"[ -f \"$CONF\" ] && sed -i 's#path=\"[^\"]*\"#path=\"{STORAGE}/syncthing\"#' \"$CONF\"; "
-    f"[ -f \"$CONF\" ] && sed -i 's#<address>127.0.0.1:8384</address>#<address>0.0.0.0:8384</address>#' \"$CONF\"; "
+    f"[ -f \"$CONF\" ] && python3 -c \"{SYNCTHING_PATCH_PY}\"; "
     f"systemctl start syncthing@{ADMIN_USER}.service")
 # ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
 # under a single 'setup' lock so two apt processes never collide on the dpkg
