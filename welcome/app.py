@@ -34,7 +34,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.05.20260722234500"   # bump on every welcome-app change
+WELCOME_VER = "01.06.20260723000500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -197,6 +197,10 @@ PAGE = """<!doctype html>
      <form class="inline" method="post" action="/install/tailscale"><button>Install</button></form>
    {% endif %}
   </div>
+  {% if ts_login_url %}
+  <p class="hint">Tailscale needs a one-time sign-in. Open this link and log in:</p>
+  <a class="linkbtn" href="{{ ts_login_url }}" target="_blank">Sign in to Tailscale ↗</a>
+  {% endif %}
   <!-- Syncthing: cross-device folder sync, own web GUI on :8384 -->
   <div class="app">
    <span class="name">Syncthing</span>
@@ -207,10 +211,6 @@ PAGE = """<!doctype html>
      <form class="inline" method="post" action="/install/syncthing"><button>Install</button></form>
    {% endif %}
   </div>
-  {% if ts_login_url %}
-  <p class="hint">Tailscale needs a one-time sign-in. Open this link and log in:</p>
-  <a class="linkbtn" href="{{ ts_login_url }}" target="_blank">Sign in to Tailscale ↗</a>
-  {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
  </div>
 
