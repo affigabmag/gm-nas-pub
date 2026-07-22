@@ -211,22 +211,22 @@ PAGE = """<!doctype html>
      <form class="inline" method="post" action="/install/syncthing"><button>Install</button></form>
    {% endif %}
   </div>
+  {% if syncthing == 'ready' %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+   <p class="hint" style="font-weight:600;color:var(--fg)">Syncthing — sync your phone</p>
+   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
+    directly over your home network — no cloud, no accounts. Install the app, open it, add a
+    folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
+   <div class="links">
+    <a class="linkbtn" href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">Get it for Android ↗</a>
+    <a class="linkbtn" href="https://apps.apple.com/app/mobius-sync/id1539203216" target="_blank">Get it for iPhone ↗</a>
+   </div>
+   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (Möbius Sync)
+    occasionally to let it sync. Android's version can run continuously in the background.</p>
+  </div>
+  {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
  </div>
-
- {% if syncthing == 'ready' %}
- <div class="card"><h2>Syncthing — sync your phone</h2>
-  <p class="hint">Syncthing keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your
-   phone, directly over your home network — no cloud, no accounts. Install the app, open it, add a
-   folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
-  <div class="links">
-   <a class="linkbtn" href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">Get it for Android ↗</a>
-   <a class="linkbtn" href="https://apps.apple.com/app/mobius-sync/id1539203216" target="_blank">Get it for iPhone ↗</a>
-  </div>
-  <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (Möbius Sync)
-   occasionally to let it sync. Android's version can run continuously in the background.</p>
- </div>
- {% endif %}
 
  <div class="card"><h2>Manage</h2>
   <div class="links">

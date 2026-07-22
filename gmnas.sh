@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.150.20260722233644"   # bump when this menu changes
+MENU_VER="01.152.20260723002717"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -268,14 +268,14 @@ dispatch_action() {
            echo "  Terminal : http://$h:7681"; pause ;;
         j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
         y|Y) if command -v w3m >/dev/null 2>&1; then
-               read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
+               read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
                w3m -O UTF-8 "$u"
              else
                echo "w3m not installed -- run ${YL}Resume install (online)${R} first."
                pause
              fi ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
-               read -rp "URL [https://duckduckgo.com]: " u; u="${u:-https://duckduckgo.com}"
+               read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
                lynx -display_charset=UTF-8 -assume_charset=UTF-8 "$u"
              else
                echo "lynx not installed -- run ${YL}Resume install (online)${R} first."
