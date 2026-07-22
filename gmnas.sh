@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.144.20260722205917"   # bump when this menu changes
+MENU_VER="01.145.20260722210146"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -86,13 +86,31 @@ term_cols() { tput cols 2>/dev/null || echo 60; }
 term_lines() { tput lines 2>/dev/null || echo 24; }
 rule() { local n; n=$(term_cols); printf -v RULE '%*s' "$n" ''; printf '%s' "${RULE// /━}"; }
 
+STATS_LAST=0
+STATS_TXT=""
+# Cached CPU/mem/disk stats, refreshed at most once/minute -- render() runs on
+# every keystroke (arrow nav), and top -bn1 takes ~1s, so recomputing every
+# call would make navigation feel sluggish for a number that's stale anyway.
+refresh_stats() {
+    local now; now="$(date +%s)"
+    if [ -n "$STATS_TXT" ] && [ $((now - STATS_LAST)) -lt 60 ]; then return; fi
+    STATS_LAST="$now"
+    local cpu mem disk
+    cpu="$(top -bn1 2>/dev/null | awk '/Cpu\(s\)/{for(i=1;i<=NF;i++) if($i=="id,"){idle=$(i-1); gsub(/%/,"",idle); printf "%.0f%%", 100-idle}}')"
+    mem="$(free -m 2>/dev/null | awk '/^Mem:/{printf "%d/%dMB", $3,$2}')"
+    disk="$(df -h --output=target,used,size 2>/dev/null | awk '$1=="/"||$1=="/srv/storage"{printf "%s %s/%s  ", $1,$2,$3}')"
+    STATS_TXT="CPU ${cpu:-?}   MEM ${mem:-?}   DISK ${disk:-?}"
+}
+
 header() {
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
+    refresh_stats
     printf "${CY}%s${R}${EL}\n" "$(rule)"
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
     printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
     printf "  ${GY}Version${R} ${B}${GR}%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
+    printf "  ${GY}%s${R}${EL}\n" "$STATS_TXT"
     printf "${CY}%s${R}${EL}\n" "$(rule)"
 }
 
@@ -150,7 +168,10 @@ printf '\033[2J\033[H'
 # caches the credential for a few minutes).
 while true; do
     render
-    IFS= read -rsn1 k
+    # -t 60: wake on its own every minute (even with no keypress) so the
+    # CPU/mem/disk stats line actually refreshes while the menu sits idle,
+    # not just when the user happens to press a key.
+    if ! IFS= read -rsn1 -t 60 k; then continue; fi
     if [ "$k" = $'\e' ]; then IFS= read -rsn2 -t 0.05 rest; k="$k$rest"; fi
     case "$k" in
         $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
