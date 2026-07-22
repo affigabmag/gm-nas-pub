@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.134.20260722180927"   # bump when this menu changes
+MENU_VER="01.136.20260722184755"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -102,9 +102,10 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f z g x h w i j y k t l m n o r p q )
+KEYS=(   a b c d e f z g x h w i j y u k t l m n o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
-         "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Web browser" "Resume install (online)" \
+         "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" "Web browser" \
+         "Auto-complete install" "Resume install (online)" \
          "Resume install (USB tether)" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" "Open a shell" \
          "Reboot" "Power off" "Quit" )
@@ -113,12 +114,13 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
          "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" "chawan (cha), terminal browser" \
+         "WiFi -> Resume install -> First-time wizard, one shot" \
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
          "download rest over a phone USB tether (if WiFi unavailable)" \
          "gm-update, online" "mount a USB drive and list files" "offline update, no reinstall" \
          "shell as $(whoami)" "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
-                       [14]="INSTALL & UPDATE" [19]="SHELL & POWER" )
+                       [14]="INSTALL & UPDATE" [20]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -241,6 +243,40 @@ while true; do
                echo "chawan (cha) not installed -- run ${YL}Resume install (online)${R} first."
                pause
              fi ;;
+        u|U) echo "${B}Auto-complete install${R} — WiFi -> Resume install -> First-time wizard"
+           read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
+           read -rsp "Password: " p; echo
+           run_helper join-wifi "$s" "$p"
+           echo "Waiting a few seconds for the connection to settle..."
+           sleep 5
+           if net_online; then
+             echo "Internet OK -- resuming install online..."
+             run_helper gm-install-all
+           else
+             echo "No internet yet -- trying USB tether resume install..."
+             run_helper gm-resume-usb
+           fi
+           echo
+           if ! check_ap_prereqs; then
+             echo "Auto-complete stopped before the First-time wizard (see above)."
+             pause; continue
+           fi
+           echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
+           echo "setup mode (you'll lose this network connection). Continue? [y/N]"
+           read -rsn1 yn; echo
+           if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
+             run_helper reset-setup
+             echo
+             echo "  ============ NOW ON YOUR PHONE ============"
+             echo "   1) WiFi:     GMNas-Setup"
+             echo "      Password: gmnas2026"
+             echo "   2) Browser:  http://192.168.42.1"
+             echo "   3) Pick your home WiFi + password, tap Connect"
+             echo
+             echo "   The gm-nas joins it, then reboots on the new WiFi."
+             echo "  =========================================="
+           else echo "cancelled."; fi
+           pause ;;
         k|K) run_helper gm-install-all; pause ;;
         t|T) run_helper gm-resume-usb; pause ;;
         l|L) run_helper gm-update; pause ;;
