@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.155.20260723015322"   # bump when this menu changes
+MENU_VER="01.156.20260723021203"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -183,16 +183,44 @@ if command -v figlet >/dev/null 2>&1; then
         }')"
 fi
 
+# Print $1 (may contain ANSI color codes) then pad with spaces to $2
+# VISIBLE columns -- padding by raw string length would overcount by however
+# many invisible escape bytes it contains, misaligning whatever comes next.
+pad_to() {
+    local s="$1" w="$2" plain vis pad
+    plain="$(printf '%s' "$s" | sed -E 's/\x1b\[[0-9;]*m//g')"
+    vis=${#plain}
+    pad=$((w - vis)); [ "$pad" -lt 1 ] && pad=1
+    printf '%s%*s' "$s" "$pad" ''
+}
+
 header() {
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
     refresh_stats
     printf "${CY}%s${R}${EL}\n" "$(rule)"
-    [ -n "$BANNER_TXT" ] && printf '%s\n' "$BANNER_TXT" | while IFS= read -r bl; do printf "  %s${EL}\n" "$bl"; done
-    printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
-    printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
-    printf "  ${GY}Version${R} ${B}${GR}%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
-    printf "  ${GY}%s${R}${EL}\n" "$STATS_TXT"
+    # Header text (left column) and the GM-NAS banner (right column) share the
+    # SAME rows instead of the banner sitting above and doubling the header's
+    # vertical space. LEFTW is the fixed left-column width the banner starts
+    # after; ANSI-safe padding (pad_to) keeps that alignment regardless of
+    # how many color-escape bytes each line's text actually contains.
+    local LEFTW=54
+    local -a hrows=(
+        "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}  %b"
+        "  ${GY}Host${R} ${GR}$(H).local${R}   ${GY}IP${R} ${GR}${ip}${R}   ${GY}User${R} ${GR}$(whoami)${R}"
+        "  ${GY}Version${R} ${B}${GR}$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')${R}"
+        "  ${GY}${STATS_TXT}${R}"
+    )
+    hrows[0]="$(printf "${hrows[0]}" "$prov")"
+    local -a brows=()
+    if [ -n "$BANNER_TXT" ]; then
+        while IFS= read -r bl; do brows+=("$bl"); done <<< "$BANNER_TXT"
+    fi
+    local n=${#hrows[@]}; [ "${#brows[@]}" -gt "$n" ] && n=${#brows[@]}
+    local i
+    for ((i=0; i<n; i++)); do
+        printf '%s%s%s\n' "$(pad_to "${hrows[i]:-}" "$LEFTW")" "${brows[i]:-}" "${EL}"
+    done
     printf "${CY}%s${R}${EL}\n" "$(rule)"
 }
 
