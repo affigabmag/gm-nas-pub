@@ -59,7 +59,7 @@ echo "-- apt packages --"
 # whole dependency tree/cache from scratch on EVERY invocation, so installing
 # 7 packages one-by-one meant paying that cost 7 times -- with universe
 # enabled that's a large index to re-resolve repeatedly on this hardware.
-retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager
+retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager w3m lynx
 
 echo "-- enabling services --"
 systemctl enable --now ssh avahi-daemon 2>/dev/null || true
@@ -132,26 +132,6 @@ retry curl -fsSL "$BASE/files/homenas-firstboot.service" -o /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable homenas-firstboot.service 2>/dev/null || true
 
-echo "-- chawan (cha) terminal web browser --"
-if ! command -v cha >/dev/null 2>&1; then
-    apt-get install -y nim git pkg-config libssl-dev zlib1g-dev \
-        libbrotli-dev libssh2-1-dev >/dev/null 2>&1 || true
-    if command -v nim >/dev/null 2>&1; then
-        rm -rf /tmp/chawan
-        # chawan isn't a published nimble package -- build from source.
-        # One shot, not retry(): a real build failure (missing dep, bad
-        # submodule) would otherwise retry forever with no visible error.
-        if git clone https://git.sr.ht/~bptato/chawan /tmp/chawan; then
-            ( cd /tmp/chawan && make submodule && make ) \
-                && make -C /tmp/chawan install PREFIX=/usr/local \
-                || echo "  WARNING: chawan build failed -- see output above"
-        else
-            echo "  WARNING: could not clone chawan (no internet? sr.ht down?)"
-        fi
-    else
-        echo "  WARNING: nim not available from apt -- cannot build chawan"
-    fi
-fi
 if command -v cha >/dev/null 2>&1; then
     echo "  chawan installed: $(command -v cha)"
 else
