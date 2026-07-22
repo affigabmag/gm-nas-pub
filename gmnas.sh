@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.153.20260723005336"   # bump when this menu changes
+MENU_VER="01.154.20260723012931"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -154,11 +154,34 @@ act_x() {
     fi
 }
 
+# Big "GM-NAS" figlet banner with a blue->pink horizontal gradient, computed
+# ONCE (not per-render -- spawning figlet+awk on every keystroke would make
+# navigation feel sluggish for something that never changes). Empty string
+# (no banner line printed) if figlet isn't installed yet (offline, before
+# Resume install) -- degrades to just the plain title text already below it.
+BANNER_TXT=""
+if command -v figlet >/dev/null 2>&1; then
+    BANNER_TXT="$(figlet -f small "GM-NAS" 2>/dev/null | awk '
+        { n = length($0)
+          line = ""
+          for (i = 1; i <= n; i++) {
+              c = substr($0, i, 1)
+              frac = (n > 1) ? (i - 1) / (n - 1) : 0
+              r = int(88  + frac * (236 - 88))
+              g = int(133 + frac * (64  - 133))
+              b = int(233 + frac * (156 - 233))
+              line = line sprintf("\033[38;2;%d;%d;%dm%s", r, g, b, c)
+          }
+          print line "\033[0m"
+        }')"
+fi
+
 header() {
     local ip prov; ip="$(IP)"; [ -z "$ip" ] && ip="<offline>"
     if [ -f /etc/homenas/provisioned ]; then prov="${GR}● online${R}"; else prov="${OR}● setup mode${R}"; fi
     refresh_stats
     printf "${CY}%s${R}${EL}\n" "$(rule)"
+    [ -n "$BANNER_TXT" ] && printf '%s\n' "$BANNER_TXT" | while IFS= read -r bl; do printf "  %s${EL}\n" "$bl"; done
     printf "  ${B}${WH}gm-nas${R} ${DIM}control menu${R}                              %b${EL}\n" "$prov"
     printf "  ${GY}Host${R} ${GR}%s.local${R}   ${GY}IP${R} ${GR}%s${R}   ${GY}User${R} ${GR}%s${R}${EL}\n" "$(H)" "$ip" "$(whoami)"
     printf "  ${GY}Version${R} ${B}${GR}%s${R}${EL}\n" "$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
@@ -172,10 +195,10 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n ${MG}${B}%s${R}${EL}\n" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f z g x h w i j y s u k t l m n v o r p q )
+KEYS=(   a b c d e f z g x h w i j s u k t l m n v o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
          "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" \
-         "Web browser (w3m)" "Web browser (lynx)" \
+         "Web browser (lynx)" \
          "Auto-complete install" "Resume install (online)" \
          "Resume install (USB tether)" \
          "Update from GitHub" "Mount & view files" "Apply Ventoy edits" \
@@ -185,8 +208,8 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows Experience Index style)" \
          "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
-         "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal" "welcome + terminal" \
-         "w3m, terminal browser" "lynx, terminal browser" \
+         "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal / Syncthing" "welcome + terminal" \
+         "lynx, terminal browser" \
          "WiFi -> Resume install -> First-time wizard, one shot" \
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
          "download rest over a phone USB tether (if WiFi unavailable)" \
@@ -194,7 +217,7 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "same menu, everything inside dialog boxes" "shell as $(whoami)" \
          "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
-                       [15]="INSTALL & UPDATE" [21]="SHELL & POWER" )
+                       [14]="INSTALL & UPDATE" [21]="SHELL & POWER" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -270,17 +293,11 @@ dispatch_action() {
            else echo "cancelled."; fi
            pause ;;
         i|I) h="$(H).local"
-           echo "  Welcome  : http://$h"
-           echo "  Cockpit  : https://$h:9090"
-           echo "  Terminal : http://$h:7681"; pause ;;
+           echo "  Welcome   : http://$h"
+           echo "  Cockpit   : https://$h:9090"
+           echo "  Terminal  : http://$h:7681"
+           echo "  Syncthing : http://$h:8384"; pause ;;
         j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
-        y|Y) if command -v w3m >/dev/null 2>&1; then
-               read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
-               w3m -O UTF-8 "$u"
-             else
-               echo "w3m not installed -- run ${YL}Resume install (online)${R} first."
-               pause
-             fi ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
                read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
                lynx -display_charset=UTF-8 -assume_charset=UTF-8 "$u"

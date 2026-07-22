@@ -20,6 +20,7 @@ import os
 import re
 import time
 import json
+import ctypes
 import base64
 import shutil
 import subprocess
@@ -34,7 +35,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.12.20260723011500"   # bump on every welcome-app change
+WELCOME_VER = "01.13.20260723013500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -107,7 +108,7 @@ PAGE = """<!doctype html>
  .btn-cancel{background:#0b1220;color:var(--fg);border:1px solid var(--border)}
  .shares{margin-top:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
   gap:8px;max-height:280px;overflow-y:auto;padding:2px}
- @media(max-width:430px){.shares{grid-template-columns:1fr}}
+ @media(max-width:430px){.shares{grid-template-columns:1fr}.links{grid-template-columns:1fr}}
  .shrow{min-width:0;position:relative;display:flex;flex-direction:column;gap:1px;
   padding:8px 34px 8px 10px;border:1px solid var(--border);border-radius:9px;background:#0b1220}
  .shname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -148,7 +149,7 @@ PAGE = """<!doctype html>
   {% if not password_not_set %}<button type="button" id="gearBtn" class="gear" title="Manage NAS" aria-label="Manage NAS">⚙</button>{% endif %}
  </header>
 
- {% if msg %}<div class="card"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
+ {% if msg %}<div class="card" id="msgCard" style="transition:opacity .4s"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
 
  {% if password_not_set %}
  <div class="card"><h2>1. Create your admin account</h2>
@@ -215,15 +216,22 @@ PAGE = """<!doctype html>
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts. Install the app, open it, add a
    folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
-  <div class="links" style="align-items:center;gap:14px">
-   <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">
-     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
-          alt="Get Syncthing-Fork on Google Play" height="52"></a>
-   <a href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank">
-     <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
-          alt="Get SyncTrain on the App Store" height="40"></a>
+  <div class="links" style="align-items:start;gap:14px">
+   <div>
+    <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
+       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+      <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+           alt="Get Syncthing-Fork on Google Play" height="52" style="max-width:100%"></a>
+    <p class="hint" style="text-align:center;margin-top:4px">Android: <b>Syncthing-Fork</b></p>
+   </div>
+   <div>
+    <a href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank"
+       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+      <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
+           alt="Get SyncTrain on the App Store" height="40" style="max-width:100%"></a>
+    <p class="hint" style="text-align:center;margin-top:4px">iPhone: <b>SyncTrain</b></p>
+   </div>
   </div>
-  <p class="hint" style="margin-top:6px">Android: <b>Syncthing-Fork</b>. iPhone: <b>SyncTrain</b>.</p>
   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (SyncTrain)
    occasionally to let it sync. Android's version can run continuously in the background.</p>
   {% endif %}
@@ -352,13 +360,27 @@ PAGE = """<!doctype html>
   <p><b>Keep:</b> Operating system, all packages.</p>
   <p><b>Use this if:</b> You want to start completely fresh (new user, moving to someone else).</p>
   <p style="color: var(--text-danger)"><b>This cannot be undone without reflashing the OS.</b></p>
-  <div class="modal-actions">
-   <button type="button" class="btn-cancel" id="factoryResetCancel">Cancel</button>
-   <form method="post" action="/factory-reset"><button type="submit" class="danger-btn">Factory reset &amp; reboot</button></form>
-  </div>
+  <form method="post" action="/factory-reset">
+   <label>Confirm your password</label>
+   <input type="password" name="password" autocomplete="current-password" required>
+   <div class="modal-actions">
+    <button type="button" class="btn-cancel" id="factoryResetCancel">Cancel</button>
+    <button type="submit" class="danger-btn">Factory reset &amp; reboot</button>
+   </div>
+  </form>
  </div>
 </div>
 <script>
+ // Auto-dismiss the flash message (account created, share added, etc) after
+ // 5s instead of leaving it on screen forever.
+ (function(){
+   var m = document.getElementById('msgCard');
+   if (!m) return;
+   setTimeout(function(){
+     m.style.opacity = '0';
+     setTimeout(function(){ m.style.display = 'none'; }, 400);
+   }, 5000);
+ })();
  document.querySelectorAll('.eye').forEach(function(btn){
    btn.addEventListener('click', function(){
      var inp = btn.parentNode.querySelector('input');
@@ -442,6 +464,30 @@ def hostbase():
 
 def hostname():
     return hostbase() + ".local"
+
+
+def verify_password(user, password):
+    """Check `password` against the real system account (/etc/shadow hash).
+    Reads /etc/shadow directly (root-only, app runs as root) and uses
+    libcrypt via ctypes for the hash comparison -- Python's stdlib `crypt`
+    AND `spwd` modules were BOTH removed in 3.13 (this box's Python
+    version, per PEP 594), so neither can be imported."""
+    stored = None
+    try:
+        with open("/etc/shadow") as f:
+            for line in f:
+                parts = line.split(":")
+                if len(parts) > 1 and parts[0] == user:
+                    stored = parts[1]
+                    break
+    except OSError:
+        return False
+    if not stored or not stored.startswith("$"):
+        return False
+    libc = ctypes.CDLL("libcrypt.so.1")
+    libc.crypt.restype = ctypes.c_char_p
+    result = libc.crypt(password.encode(), stored.encode())
+    return result is not None and result.decode() == stored
 
 
 def admin_username():
@@ -818,30 +864,46 @@ SAMBA_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get install -y samba; "
 # the package default 127.0.0.1-only, so the "Open" link works from phones on
 # the LAN. Edited via a real XML parse (not sed/regex against the raw text --
 # a sed pattern that doesn't exactly match the generated file's formatting
-# silently no-ops, leaving the GUI unreachable with no error at all, which is
-# exactly what happened the first time this used sed).
-SYNCTHING_PATCH_PY = (
-    "import xml.etree.ElementTree as ET;"
-    f"p='/home/{ADMIN_USER}/.config/syncthing/config.xml';"
-    "t=ET.parse(p); r=t.getroot();"
-    "g=r.find('gui');"
-    "(g is not None) and g.find('address') is not None and setattr(g.find('address'),'text','0.0.0.0:8384');"
-    "f=r.find('folder');"
-    f"(f is not None) and f.set('path','{STORAGE}/syncthing');"
-    "t.write(p)")
-SYNCTHING_CMD = (
-    "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
-    f"mkdir -p {STORAGE}/syncthing; chown root:{ADMIN_USER} {STORAGE}/syncthing; "
-    f"chmod 2775 {STORAGE}/syncthing; "
-    f"systemctl enable --now syncthing@{ADMIN_USER}.service; sleep 6; "
-    f"systemctl stop syncthing@{ADMIN_USER}.service; "
-    f"CONF=/home/{ADMIN_USER}/.config/syncthing/config.xml; "
-    f"[ -f \"$CONF\" ] && python3 -c \"{SYNCTHING_PATCH_PY}\"; "
-    f"systemctl start syncthing@{ADMIN_USER}.service")
+# silently no-ops, leaving the GUI unreachable with no error at all).
+#
+# MUST run as the real wizard-created admin account, not the ADMIN_USER
+# fallback constant: that constant is only ever "gmnas" (computed once, before
+# the account exists), so building this command with it silently ran
+# Syncthing under the wrong user. Called with admin_username() at trigger
+# time instead (see build_setup_cmd()).
+#
+# Config path: this Ubuntu's Syncthing follows the newer XDG state/config
+# split -- config.xml lives under ~/.local/state/syncthing/, NOT
+# ~/.config/syncthing/ (confirmed by inspecting a real installed box; an
+# earlier version of this code checked the wrong path, silently skipping the
+# patch every time -- config.xml existing is required for it to run at all).
+def syncthing_cmd(user):
+    conf = f"/home/{user}/.local/state/syncthing/config.xml"
+    patch_py = (
+        "import xml.etree.ElementTree as ET;"
+        f"p='{conf}';"
+        "t=ET.parse(p); r=t.getroot();"
+        "g=r.find('gui');"
+        "(g is not None) and g.find('address') is not None and setattr(g.find('address'),'text','0.0.0.0:8384');"
+        "f=r.find('folder');"
+        f"(f is not None) and f.set('path','{STORAGE}/syncthing');"
+        "t.write(p)")
+    return (
+        "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
+        f"mkdir -p {STORAGE}/syncthing; chown root:{user} {STORAGE}/syncthing; "
+        f"chmod 2775 {STORAGE}/syncthing; "
+        f"systemctl enable --now syncthing@{user}.service; sleep 6; "
+        f"systemctl stop syncthing@{user}.service; "
+        f"[ -f \"{conf}\" ] && python3 -c \"{patch_py}\"; "
+        f"systemctl start syncthing@{user}.service")
 # ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
 # under a single 'setup' lock so two apt processes never collide on the dpkg
 # lock. `tailscale up` blocks until the end user signs in, holding the lock.
-SETUP_CMD = "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, SYNCTHING_CMD, TAILSCALE_CMD, TS_UP_CMD])
+# Built fresh each time (not a module-level constant) so syncthing_cmd() picks
+# up the REAL admin account, which doesn't exist yet when this module loads.
+def build_setup_cmd():
+    return "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, syncthing_cmd(admin_username()),
+                       TAILSCALE_CMD, TS_UP_CMD])
 
 
 @app.route("/")
@@ -861,7 +923,7 @@ def index():
     # progress-refresh, which would wipe the account form while it's being typed.
     done = cockpit == "ready" and tailscale == "up"
     if have_internet() and not pw_not_set and not done and not is_installing("setup"):
-        start_install("setup", SETUP_CMD)
+        start_install("setup", build_setup_cmd())
 
     busy = is_installing("setup")
     # Once Samba is installed, seed the default shares (whole storage + tree).
@@ -888,7 +950,7 @@ def index():
 def install_apps():
     if not have_internet():
         return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
-    start_install("setup", SETUP_CMD)
+    start_install("setup", build_setup_cmd())
     return redirect("/?msg=Installing apps… Cockpit, Syncthing, then Tailscale.")
 
 
@@ -945,6 +1007,9 @@ def reset():
 
 @app.route("/factory-reset", methods=["POST"])
 def factory_reset():
+    password = request.form.get("password", "")
+    if not verify_password(admin_username(), password):
+        return redirect("/?cls=err&msg=Wrong password — factory reset cancelled.")
     subprocess.Popen(["/bin/bash", "-c", FACTORY_RESET_CMD], start_new_session=True)
     return FACTORY_RESET_PAGE
 

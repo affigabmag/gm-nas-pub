@@ -28,7 +28,7 @@ Never commit passwords, password hashes, Tailscale authkeys, or private keys her
    console login). From there: join WiFi, then **Resume install** — this is
    the point where `gm-install-all.sh` actually reaches out to the internet,
    installing the rest of the packages (Samba, Cockpit, NFS, ttyd,
-   NetworkManager, `w3m`/`lynx`, `dialog`) and fetching this repo's other
+   NetworkManager, `lynx`, `dialog`) and fetching this repo's other
    files (welcome app, WiFi setup portal, systemd units) fresh from GitHub.
 3. **First-time wizard** (menu item `h`, or the one-shot `u` "Auto-complete
    install") broadcasts a `GMNas-Setup` WiFi AP; connecting a phone opens a

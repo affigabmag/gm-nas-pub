@@ -59,7 +59,7 @@ echo "-- apt packages --"
 # whole dependency tree/cache from scratch on EVERY invocation, so installing
 # 7 packages one-by-one meant paying that cost 7 times -- with universe
 # enabled that's a large index to re-resolve repeatedly on this hardware.
-retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager w3m lynx dialog
+retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager lynx dialog figlet
 
 echo "-- enabling services --"
 systemctl enable --now ssh avahi-daemon 2>/dev/null || true
