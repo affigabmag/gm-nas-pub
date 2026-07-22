@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.136.20260722184755"   # bump when this menu changes
+MENU_VER="01.137.20260722185104"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -244,11 +244,15 @@ while true; do
                pause
              fi ;;
         u|U) echo "${B}Auto-complete install${R} — WiFi -> Resume install -> First-time wizard"
+           echo
+           printf "${MG}${B}[Step 1/3] Connect to WiFi${R}\n"
            read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
            read -rsp "Password: " p; echo
            run_helper join-wifi "$s" "$p"
            echo "Waiting a few seconds for the connection to settle..."
            sleep 5
+           echo
+           printf "${MG}${B}[Step 2/3] Resume install${R}\n"
            if net_online; then
              echo "Internet OK -- resuming install online..."
              run_helper gm-install-all
@@ -257,6 +261,7 @@ while true; do
              run_helper gm-resume-usb
            fi
            echo
+           printf "${MG}${B}[Step 3/3] First-time wizard${R}\n"
            if ! check_ap_prereqs; then
              echo "Auto-complete stopped before the First-time wizard (see above)."
              pause; continue
