@@ -34,7 +34,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.11.20260723010500"   # bump on every welcome-app change
+WELCOME_VER = "01.12.20260723011500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -228,7 +228,6 @@ PAGE = """<!doctype html>
    occasionally to let it sync. Android's version can run continuously in the background.</p>
   {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
-  <hr style="border-color:var(--border);margin:16px 0">
   <div class="app">
    <span class="name">Terminal</span>
    <span class="grow"><span class="desc">A shell in your browser</span></span>
