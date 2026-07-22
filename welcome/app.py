@@ -34,7 +34,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.09.20260723004500"   # bump on every welcome-app change
+WELCOME_VER = "01.10.20260723005200"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -215,10 +215,15 @@ PAGE = """<!doctype html>
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts. Install the app, open it, add a
    folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
-  <div class="links">
-   <a class="linkbtn" href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">Get it for Android — Syncthing-Fork ↗</a>
-   <a class="linkbtn" href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank">Get it for iPhone — SyncTrain ↗</a>
+  <div class="links" style="align-items:center;gap:14px">
+   <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank">
+     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+          alt="Get Syncthing-Fork on Google Play" height="52"></a>
+   <a href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank">
+     <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
+          alt="Get SyncTrain on the App Store" height="40"></a>
   </div>
+  <p class="hint" style="margin-top:6px">Android: <b>Syncthing-Fork</b>. iPhone: <b>SyncTrain</b>.</p>
   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (SyncTrain)
    occasionally to let it sync. Android's version can run continuously in the background.</p>
   {% endif %}
