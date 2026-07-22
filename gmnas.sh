@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.129.20260722131509"   # bump when this menu changes
+MENU_VER="01.130.20260722132046"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -45,6 +45,32 @@ run_helper() {
     fi
 }
 run() { echo "+ $*"; "$@"; }
+
+# Full-proof prerequisite check for the First-time wizard (GMNas-Setup AP).
+# The AP needs NetworkManager to own the WiFi device (wifi-connect + nmcli
+# both go through it) + the wifi-connect binary/UI + the firstboot service.
+# None of these exist on a fresh offline install until 'Resume install' has
+# run. Instead of silently doing nothing when a piece is missing, list
+# EXACTLY what's missing and how to fix it.
+check_ap_prereqs() {
+    local missing=()
+    command -v nmcli >/dev/null 2>&1 || missing+=("network-manager (nmcli) not installed")
+    systemctl is-active --quiet NetworkManager 2>/dev/null || missing+=("NetworkManager service not running")
+    nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$' || missing+=("no WiFi device visible to NetworkManager (it may still be owned by networkd — reboot after Resume install to pick this up)")
+    [ -x /usr/local/lib/wifi-connect/wifi-connect ] || missing+=("wifi-connect binary not installed")
+    [ -f /usr/local/lib/wifi-connect/ui/index.html ] || missing+=("setup-portal UI (index.html) not installed")
+    [ -f /etc/systemd/system/homenas-firstboot.service ] || missing+=("homenas-firstboot.service not installed")
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "${RD}${B}Cannot start the First-time wizard — prerequisites not met:${R}"
+        local m
+        for m in "${missing[@]}"; do echo "  - $m"; done
+        echo
+        echo "Fix: run ${YL}Resume install (online)${R} or ${YL}Resume install (USB tether)${R} first,"
+        echo "then try the First-time wizard again."
+        return 1
+    fi
+    return 0
+}
 
 # Rule/footer are sized to the CURRENT terminal each render -- a fixed-length
 # rule left a gap on wide terminals instead of spanning the full row.
@@ -159,7 +185,8 @@ while true; do
                  echo "   -> Connect WiFi (menu: Connect to WiFi) or plug a phone USB tether."
              fi
              pause ;;
-        h|H) echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
+        h|H) if ! check_ap_prereqs; then pause; continue; fi
+           echo "Starting the first-time WiFi wizard — the gm-nas will switch to"
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then

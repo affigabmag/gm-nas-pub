@@ -20,6 +20,37 @@ LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
 exec > >(tee -a "$LOGDIR/join-wifi.log") 2>&1
 echo "$(date '+%F %T') ===== join-wifi start (SSID=$SSID) ====="
 
+# --- 0) If NetworkManager is already installed+running (i.e. Resume install
+#        has already happened), use it directly via nmcli -- the ORIGINAL,
+#        simpler mechanism. Do NOT write a networkd netplan profile in that
+#        case: it would make NetworkManager mark the WiFi device "unmanaged",
+#        breaking the First-time wizard AP (wifi-connect + nmcli need to see
+#        a managed wifi device). Only fall back to the offline
+#        networkd+wpa_supplicant path when NetworkManager genuinely isn't
+#        available yet.
+if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    echo "== NetworkManager present -- joining via nmcli =="
+    DEV="$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
+    nmcli connection delete "$SSID" 2>/dev/null || true
+    nmcli connection add type wifi con-name "$SSID" ${DEV:+ifname "$DEV"} ssid "$SSID" \
+        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
+        connection.autoconnect yes connection.autoconnect-priority 100 2>/dev/null \
+        && echo "  connection '$SSID' created"
+    mkdir -p /etc/homenas; touch /etc/homenas/provisioned
+    nmcli connection up "$SSID" >/dev/null 2>&1
+    sleep 3
+    ip="$(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}' \
+        | xargs -I{} ip -4 -o addr show dev {} 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+    echo
+    if [ -n "$ip" ]; then
+        echo ">> Connected to '$SSID'. IP: $ip"
+    else
+        echo ">> No IP yet -- WiFi may still be associating, or the password is wrong."
+        echo "   Re-run 'Connect to WiFi' from the menu to try again."
+    fi
+    exit 0
+fi
+
 # --- 1) Ensure wpa_supplicant is present -------------------------------------
 # Not on the minimal base install. Install offline from the WiFi .debs: first
 # from /root/wifi-debs, else copy them off the Ventoy USB (works now that the

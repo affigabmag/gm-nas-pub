@@ -68,6 +68,54 @@ systemctl enable --now nfs-kernel-server 2>/dev/null || true
 systemctl enable --now ttyd.service 2>/dev/null || true
 systemctl enable --now NetworkManager 2>/dev/null || true
 
+# --- Hand the WiFi device from networkd back to NetworkManager -------------
+# join-wifi.sh (used during the OFFLINE phase, before NetworkManager exists)
+# writes /etc/netplan/60-gmnas-wifi.yaml with renderer: networkd. As long as
+# that file exists, NetworkManager treats the WiFi device as "unmanaged" --
+# nmcli then reports NO wifi device at all, and the First-time wizard
+# (wifi-connect + nmcli) silently does nothing. Migrate: read the SSID/
+# password out of that file, recreate the same connection under
+# NetworkManager, then remove the networkd file so NM can claim the device.
+WIFI_NETPLAN=/etc/netplan/60-gmnas-wifi.yaml
+if [ -f "$WIFI_NETPLAN" ]; then
+    echo "-- migrating WiFi from networkd to NetworkManager --"
+    WDEV="$(python3 -c "
+import re
+d = open('$WIFI_NETPLAN').read()
+m = re.search(r'wifis:\s*\n\s*([^\s:]+):', d)
+print(m.group(1) if m else '')
+")"
+    WSSID="$(python3 -c "
+import re
+d = open('$WIFI_NETPLAN').read()
+m = re.search(r'access-points:\s*\n\s*\"(.*)\":', d)
+print(m.group(1) if m else '')
+")"
+    WPASS="$(python3 -c "
+import re
+d = open('$WIFI_NETPLAN').read()
+m = re.search(r'password:\s*\"(.*)\"', d)
+print(m.group(1) if m else '')
+")"
+    if [ -n "$WSSID" ] && [ -n "$WPASS" ]; then
+        nmcli connection delete "$WSSID" 2>/dev/null || true
+        nmcli connection add type wifi con-name "$WSSID" ${WDEV:+ifname "$WDEV"} ssid "$WSSID" \
+            wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$WPASS" \
+            connection.autoconnect yes connection.autoconnect-priority 100 2>/dev/null \
+            && echo "  recreated '$WSSID' under NetworkManager"
+        rm -f "$WIFI_NETPLAN"
+        netplan generate 2>/dev/null || true
+        netplan apply 2>/dev/null || true
+        systemctl restart NetworkManager 2>/dev/null || true
+        sleep 3
+        nmcli connection up "$WSSID" >/dev/null 2>&1 || true
+        echo "  WiFi device handed to NetworkManager (was: $WDEV)"
+    else
+        echo "  WARNING: could not parse SSID/password from $WIFI_NETPLAN -- leaving as-is."
+        echo "  You may need to re-run 'Connect to WiFi' after this."
+    fi
+fi
+
 echo "-- wifi-connect (GMNas-Setup AP for the First-time wizard) --"
 mkdir -p /usr/local/lib/wifi-connect/ui
 retry curl -fsSL https://github.com/balena-os/wifi-connect/releases/latest/download/wifi-connect-x86_64-unknown-linux-gnu.tar.gz -o /tmp/wifi-connect.tar.gz
