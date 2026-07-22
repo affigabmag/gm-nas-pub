@@ -55,10 +55,11 @@ echo "-- apt packages --"
 # wifi-connect creates/tears down the AP via NetworkManager's D-Bus API, and
 # reset-setup.sh uses nmcli. It was intentionally NOT part of the offline base
 # (can't install without internet) -- this is the one place it's added back.
-for p in avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager; do
-    echo "  installing $p ..."
-    retry apt-get install -y "$p"
-done
+# ONE apt-get call for all packages, not a per-package loop: apt rebuilds its
+# whole dependency tree/cache from scratch on EVERY invocation, so installing
+# 7 packages one-by-one meant paying that cost 7 times -- with universe
+# enabled that's a large index to re-resolve repeatedly on this hardware.
+retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager
 
 echo "-- enabling services --"
 systemctl enable --now ssh avahi-daemon 2>/dev/null || true
