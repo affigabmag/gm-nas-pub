@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.154.20260723012931"   # bump when this menu changes
+MENU_VER="01.155.20260723015322"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -153,6 +153,13 @@ act_x() {
         echo "   -> Connect WiFi (menu: Connect to WiFi) or plug a phone USB tether."
     fi
 }
+act_i() {
+    local h; h="$(H).local"
+    echo "  Welcome   : http://$h"
+    echo "  Cockpit   : https://$h:9090"
+    echo "  Terminal  : http://$h:7681"
+    echo "  Syncthing : http://$h:8384"
+}
 
 # Big "GM-NAS" figlet banner with a blue->pink horizontal gradient, computed
 # ONCE (not per-render -- spawning figlet+awk on every keystroke would make
@@ -292,11 +299,7 @@ dispatch_action() {
              echo "  =========================================="
            else echo "cancelled."; fi
            pause ;;
-        i|I) h="$(H).local"
-           echo "  Welcome   : http://$h"
-           echo "  Cockpit   : https://$h:9090"
-           echo "  Terminal  : http://$h:7681"
-           echo "  Syncthing : http://$h:8384"; pause ;;
+        i|I) run_boxed "Web links" act_i ;;
         j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
                read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
@@ -386,15 +389,24 @@ boxed_menu() {
         return
     fi
     while true; do
-        local args=(--title " gm-nas control menu " --menu "$(boxed_header_text)" "$(term_lines)" "$(term_cols)" $((NUM - 1)))
-        local i
+        # dialog --menu has no native section-header concept -- insert the
+        # SAME SECBEFORE category labels the classic menu uses as inert rows
+        # (a distinct tag "hdr<i>" the dispatch below just ignores), giving
+        # the same grouped look inside the dialog UI.
+        local rowcount=$((NUM - 1)) i   # -1: 'v' itself is excluded below
+        for i in "${!SECBEFORE[@]}"; do rowcount=$((rowcount + 1)); done
+        local args=(--title " gm-nas control menu " --menu "$(boxed_header_text)" "$(term_lines)" "$(term_cols)" "$rowcount")
         for ((i=0; i<NUM; i++)); do
             [ "${KEYS[i]}" = v ] && continue   # don't nest "Boxed menu" inside itself
+            if [ -n "${SECBEFORE[$i]:-}" ]; then
+                args+=("hdr$i" "── ${SECBEFORE[$i]} ──")
+            fi
             args+=("${KEYS[i]}" "${TITLES[i]} -- ${DESCS[i]}")
         done
         local choice
         choice="$(dialog "${args[@]}" --stdout)" || return   # Cancel/Esc -> back to classic menu
         printf '\033[2J\033[H'
+        [[ "$choice" == hdr* ]] && continue   # header row selected -- no-op, redisplay
         dispatch_action "$choice"
     done
 }

@@ -35,7 +35,7 @@ ADMIN_USER = "gmnas"                       # fallback until the wizard creates o
 ADMIN_USER_FILE = "/etc/homenas/admin-user"
 SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
-WELCOME_VER = "01.13.20260723013500"   # bump on every welcome-app change
+WELCOME_VER = "01.14.20260723015500"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
@@ -307,40 +307,12 @@ PAGE = """<!doctype html>
   </div>
 
   <div class="msec">
-   <h4>Reset options</h4>
-   <div style="display:flex; gap:12px; flex-wrap:wrap">
-    <div style="flex:1; min-width:200px">
-     <button type="button" id="configResetOpen" class="warn-btn" style="width:100%">Config reset</button>
-     <button type="button" class="info-btn" id="configInfo" title="What does this do?" style="width:100%; margin-top:4px; padding:4px; font-size:12px">ℹ What's this?</button>
-    </div>
-    <div style="flex:1; min-width:200px">
-     <button type="button" id="factoryResetOpen" class="danger-btn" style="width:100%">Factory reset</button>
-     <button type="button" class="info-btn" id="factoryInfo" title="What does this do?" style="width:100%; margin-top:4px; padding:4px; font-size:12px">ℹ What's this?</button>
-    </div>
-   </div>
+   <h4>Reset</h4>
+   <button type="button" id="factoryResetOpen" class="danger-btn" style="width:100%">Reset</button>
   </div>
 
   <div class="modal-actions">
    <button type="button" class="btn-cancel" id="manageClose">Close</button>
-  </div>
- </div>
-</div>
-
-<div class="modal-bg" id="configResetModal">
- <div class="modal">
-  <h3>Config reset — WiFi only</h3>
-  <p>The gm-nas will:</p>
-  <ul>
-   <li><b>Forget</b> its current WiFi network</li>
-   <li>Delete saved WiFi profile</li>
-   <li><b>Reboot into setup mode</b> (GMNas-Setup AP)</li>
-   <li><b>Keep</b> your files, admin account, Samba shares</li>
-  </ul>
-  <p><b>Use this if:</b> You want to re-join a different WiFi network.</p>
-  <p>After reboot, connect to <b>GMNas-Setup</b> and pick a new WiFi.</p>
-  <div class="modal-actions">
-   <button type="button" class="btn-cancel" id="configResetCancel">Cancel</button>
-   <form method="post" action="/reset"><button type="submit" class="warn-btn">Config reset &amp; reboot</button></form>
   </div>
  </div>
 </div>
@@ -395,11 +367,10 @@ PAGE = """<!doctype html>
  {% if busy %}
  setInterval(function(){
    var a = document.activeElement, t = a ? a.tagName : '';
-   var crOpen = document.getElementById('configResetModal');
    var frOpen = document.getElementById('factoryResetModal');
    var mOpen = document.getElementById('manageModal');
    function isOpen(el){ return el && el.classList.contains('open'); }
-   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(crOpen) && !isOpen(frOpen) && !isOpen(mOpen))
+   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(frOpen) && !isOpen(mOpen))
      location.reload();
  }, 5000);
  {% endif %}
@@ -415,22 +386,14 @@ PAGE = """<!doctype html>
  (function(){
    var g=document.getElementById('gearBtn'),
        mm=document.getElementById('manageModal'), mc=document.getElementById('manageClose'),
-       crm=document.getElementById('configResetModal'), crc=document.getElementById('configResetCancel'),
-       cro=document.getElementById('configResetOpen'), cri=document.getElementById('configInfo'),
        frm=document.getElementById('factoryResetModal'), frc=document.getElementById('factoryResetCancel'),
-       fro=document.getElementById('factoryResetOpen'), fri=document.getElementById('factoryInfo');
+       fro=document.getElementById('factoryResetOpen');
    function close(el){ if(el) el.classList.remove('open'); }
    if(g&&mm){ g.addEventListener('click', function(){ mm.classList.add('open'); }); }
    if(mc){ mc.addEventListener('click', function(){ close(mm); }); }
    if(mm){ mm.addEventListener('click', function(e){ if(e.target===mm) close(mm); }); }
-   // Config reset button + info
-   if(cro&&crm){ cro.addEventListener('click', function(){ close(mm); crm.classList.add('open'); }); }
-   if(cri){ cri.addEventListener('click', function(){ crm.classList.add('open'); }); }
-   if(crc){ crc.addEventListener('click', function(){ close(crm); }); }
-   if(crm){ crm.addEventListener('click', function(e){ if(e.target===crm) close(crm); }); }
-   // Factory reset button + info
+   // Reset button
    if(fro&&frm){ fro.addEventListener('click', function(){ close(mm); frm.classList.add('open'); }); }
-   if(fri){ fri.addEventListener('click', function(){ frm.classList.add('open'); }); }
    if(frc){ frc.addEventListener('click', function(){ close(frm); }); }
    if(frm){ frm.addEventListener('click', function(e){ if(e.target===frm) close(frm); }); }
  })();
@@ -962,27 +925,6 @@ def tailscale_up():
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
 
 
-# Forget saved WiFi (non-AP profiles), clear the provisioned flag, and reboot.
-# On reboot, firstboot sees no active network and relaunches the setup AP.
-RESET_CMD = (
-    "sleep 1; rm -f /etc/homenas/provisioned; "
-    "for c in $(nmcli -t -f NAME,TYPE connection show 2>/dev/null | "
-    "awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}'); "
-    "do nmcli connection delete \"$c\"; done; "
-    "sleep 2; systemctl reboot")
-
-RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>gm-nas — resetting</title></head>
-<body style="margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;
- text-align:center;padding:48px 20px">
- <div style="font-size:44px;margin-bottom:12px">↻</div>
- <h2 style="margin:0 0 10px">Resetting…</h2>
- <p style="color:#94a3b8;line-height:1.7">Your gm-nas is rebooting into setup mode.<br><br>
-  On your phone, connect to <b style="color:#f1f5f9">GMNas-Setup</b><br>
-  and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to set it up again.</p>
-</body></html>"""
-
 FACTORY_RESET_CMD = "sleep 1; sudo /usr/local/bin/factory-reset.sh"
 
 FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
@@ -997,12 +939,6 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
   On your phone, connect to <b style="color:#f1f5f9">GMNas-Setup</b><br>
   and open <b style="color:#f1f5f9">http://192.168.42.1</b><br>to reconfigure.</p>
 </body></html>"""
-
-
-@app.route("/reset", methods=["POST"])
-def reset():
-    subprocess.Popen(["/bin/bash", "-c", RESET_CMD], start_new_session=True)
-    return RESET_PAGE
 
 
 @app.route("/factory-reset", methods=["POST"])
