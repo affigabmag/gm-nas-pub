@@ -986,6 +986,12 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
  </div>
  <ul id="frSteps" style="list-style:none;padding:0;margin:18px auto;max-width:360px;text-align:left;
      font-size:14px;color:#94a3b8;line-height:2"></ul>
+ <details style="max-width:480px;margin:12px auto;text-align:left">
+  <summary style="cursor:pointer;color:#94a3b8;font-size:13px">Show log</summary>
+  <pre id="frLog" style="margin-top:8px;padding:10px;background:#020617;border:1px solid #334155;
+      border-radius:6px;font-size:12px;line-height:1.5;color:#94a3b8;max-height:240px;overflow:auto;
+      text-align:left;white-space:pre-wrap"></pre>
+ </details>
  <div id="frDone" style="display:none">
   <p style="color:#f1f5f9;line-height:1.7">Your gm-nas is rebooting into <b>setup mode</b>.<br><br>
    Once it's back, connect your phone to <b>GMNas-Setup</b><br>
@@ -1011,6 +1017,9 @@ FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
  var iv = setInterval(function(){
    fetch('/factory-reset/log').then(function(r){ return r.text(); }).then(function(text){
      failures = 0;
+     var logEl = document.getElementById('frLog');
+     logEl.textContent = text;
+     logEl.scrollTop = logEl.scrollHeight;
      var newDone = 0;
      for (var i = 0; i < STEPS.length; i++) {
        if (text.indexOf(STEPS[i][0]) !== -1) newDone = i + 1;
@@ -1043,7 +1052,20 @@ def factory_reset():
     password = request.form.get("password", "")
     if not verify_password(admin_username(), password):
         return redirect("/?cls=err&msg=Wrong password — factory reset cancelled.")
-    subprocess.Popen(["/bin/bash", "-c", FACTORY_RESET_CMD], start_new_session=True)
+    # factory-reset.sh's first action is "systemctl stop gmnas-welcome.service"
+    # -- this app IS that service. A plain Popen(start_new_session=True) only
+    # detaches from the terminal/session, not from systemd's cgroup, so the
+    # instant the service stops, systemd's default KillMode=control-group
+    # kills the whole cgroup INCLUDING this "detached" child -- the reset
+    # dies right after logging "stopping welcome app" and never runs another
+    # line. Confirmed live: the reset worked fine from the console menu
+    # (a separate shell, unaffected) but silently died every time from this
+    # web route. systemd-run gives it its own transient scope/cgroup so
+    # stopping gmnas-welcome.service can't touch it.
+    subprocess.Popen([
+        "systemd-run", "--unit=gmnas-factory-reset", "--collect",
+        "/bin/bash", "-c", FACTORY_RESET_CMD,
+    ])
     return FACTORY_RESET_PAGE.replace("__STEPS_JSON__", json.dumps(FACTORY_RESET_STEPS))
 
 
