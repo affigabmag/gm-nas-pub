@@ -216,8 +216,15 @@ PAGE = """<!doctype html>
   </div>
   {% if syncthing == 'ready' %}
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
-   directly over your home network — no cloud, no accounts. Install the app, open it, add a
-   folder, then scan the QR code shown in the gm-nas Syncthing web UI to pair the two devices.</p>
+   directly over your home network — no cloud, no accounts.</p>
+  <ol class="hint" style="margin:6px 0 0;padding-left:18px;line-height:1.9">
+   <li>Install the app on your phone (links below).</li>
+   <li>Open <b>Syncthing</b> above (same login as this box), then <b>Actions → Show QR code</b>.</li>
+   <li>In the phone app, add a device and scan that QR code (or type the Device ID).</li>
+   <li>Accept the pairing request on <b>both</b> sides — the box and the phone.</li>
+   <li>On the box, share the <b>syncthing</b> folder with the new device.</li>
+   <li>On the phone, accept the folder share and pick where it should sync to.</li>
+  </ol>
   <div class="links" style="align-items:start;gap:14px">
    <div>
     <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
