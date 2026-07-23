@@ -270,9 +270,12 @@
           function report(ip) {
             if (found) return; found = true;
             log('MATCH ' + ip + ' after ' + probed + ' probes, ' + Math.round((Date.now() - started) / 1000) + 's');
-            if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b> — opening it now…';
+            if (msg) msg.innerHTML = 'Found your gm-nas at <b style="color:var(--fg)">' + ip + '</b> — opening it now…' +
+              '<br><span style="color:var(--muted);font-size:12px">You can turn mobile data back on now, if you turned it off earlier.</span>';
             if (onProgress) onProgress(probed, jobs.length);
-            window.location.href = 'http://' + ip + '/';
+            // Brief pause so the message above is actually readable instead of
+            // navigating away from it instantly.
+            setTimeout(function () { window.location.href = 'http://' + ip + '/'; }, 1400);
           }
           function probe(ip) {
             if (found) return;
