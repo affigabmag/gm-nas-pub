@@ -153,6 +153,7 @@ PAGE = """<!doctype html>
     <span id="netdot" class="dot {{ 'ok' if online else 'off' }}"></span>
     <span id="nettext">{{ 'Online' if online else 'Offline' }}</span>
     <span id="netip" class="ip">{{ ip }}</span>
+    {% if not password_not_set %}<span class="ip sep">· user <b>{{ admin }}</b></span>{% endif %}
     <span class="ip sep">· version <b>{{ build }}</b></span>
   </div>
   {% if not password_not_set %}<button type="button" id="gearBtn" class="gear" title="Manage NAS" aria-label="Manage NAS">⚙</button>{% endif %}
