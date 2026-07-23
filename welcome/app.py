@@ -1177,7 +1177,19 @@ def syncthing_pending_folder_accept():
         # New local path, sibling to the main "syncthing" folder rather than
         # nested inside it, so this incoming folder gets its own real space.
         safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", label).strip("-") or folder_id
-        existing = {"id": folder_id, "label": label, "path": f"{STORAGE}/syncthing-{safe}",
+        path = f"{STORAGE}/syncthing-{safe}"
+        # Must pre-create + chown this ourselves (as root, here) -- confirmed
+        # live: Syncthing itself (running as the admin user, not root) can't
+        # mkdir directly under /srv/storage, since that directory is owned
+        # by root:gmnas and the wizard-created admin account was never added
+        # to the "gmnas" group. The ORIGINAL single "syncthing" folder never
+        # hit this because syncthing_cmd() already pre-creates + chowns it
+        # the same way -- this new-folder path just hadn't gotten the same
+        # treatment yet.
+        os.makedirs(path, exist_ok=True)
+        subprocess.run(["chown", f"root:{user}", path], capture_output=True)
+        subprocess.run(["chmod", "2775", path], capture_output=True)
+        existing = {"id": folder_id, "label": label, "path": path,
                     "type": "sendreceive", "devices": []}
         folders.append(existing)
     if not any(d.get("deviceID") == device_id for d in existing.get("devices", [])):
