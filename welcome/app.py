@@ -37,6 +37,7 @@ SMB_CONF = "/etc/samba/smb.conf"
 SMB_MARK = "# --- gm-nas managed shares ---"
 WELCOME_VER = "01.17.20260723150000"   # bump on every welcome-app change
 SHARES_JSON = "/etc/homenas/shares.json"
+SYNCTHING_GUI_HASH_FILE = "/etc/homenas/syncthing-gui-hash"   # bcrypt hash only, never plaintext
 SHARES_SEEDED_FLAG = "/etc/homenas/shares-seeded"
 
 # Created once at first setup: documents and a media/{pictures,video} tree.
@@ -514,6 +515,86 @@ def _log_smb_failure(user, detail):
         pass
 
 
+GETTY_OVERRIDE = "/etc/systemd/system/getty@tty1.service.d/override.conf"
+
+
+def disable_console_autologin():
+    """Once a real admin account exists, the console should require an
+    actual login instead of auto-logging in as the built-in 'gmnas' account.
+
+    Autologin only exists so there's SOME way to reach the gmnas menu (WiFi
+    setup, Resume install, the wizard) before any admin account with a real
+    password exists -- 'gmnas' itself ships with no password set in
+    production. Once the wizard creates a real account here, that
+    justification is gone; switch tty1 to a normal login prompt so a
+    physical console session actually requires the admin's credentials.
+    """
+    try:
+        os.makedirs(os.path.dirname(GETTY_OVERRIDE), exist_ok=True)
+        with open(GETTY_OVERRIDE, "w") as f:
+            f.write("[Service]\nExecStart=\nExecStart=-/sbin/agetty --noclear %I $TERM\n")
+        subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+        subprocess.run(["systemctl", "restart", "getty@tty1.service"], capture_output=True)
+    except OSError:
+        pass
+
+
+def set_syncthing_gui_password(user, pw):
+    """Keep Syncthing's own web GUI login in sync with the admin account's
+    password (same login everywhere, one thing for the end user to remember).
+
+    Syncthing's GUI auth checks a bcrypt hash in its own config.xml -- never
+    store the plaintext anywhere. htpasswd -B (apache2-utils) produces a
+    standard bcrypt hash without needing an extra Python bcrypt dependency;
+    Syncthing's Go bcrypt check accepts the $2y$ prefix htpasswd emits the
+    same as $2a$.
+
+    Called at two different times, which is why the hash (not the plaintext)
+    is what persists to disk:
+      1. Account creation / password change -- Syncthing may not even be
+         installed yet (it installs later, on-demand/automatically from the
+         dashboard), so there's nothing to patch directly. Just save the hash
+         for syncthing_cmd() to pick up whenever it does run.
+      2. If Syncthing IS already installed and running, also patch its live
+         config.xml + restart it, so an existing setup picks up a changed
+         password immediately instead of only on next reinstall.
+    """
+    if not shutil.which("htpasswd"):
+        subprocess.run(["apt-get", "install", "-y", "apache2-utils"],
+                       capture_output=True, env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"})
+    htpasswd = shutil.which("htpasswd")
+    if not htpasswd:
+        return
+    try:
+        # Placeholder username -- only the hash half (after the colon) is used.
+        r = subprocess.run([htpasswd, "-nbBC", "10", "x", pw], capture_output=True, text=True)
+        pwhash = r.stdout.strip().split(":", 1)[1] if ":" in r.stdout else ""
+    except Exception:
+        pwhash = ""
+    if not pwhash:
+        return
+    try:
+        os.makedirs(os.path.dirname(SYNCTHING_GUI_HASH_FILE), exist_ok=True)
+        with open(SYNCTHING_GUI_HASH_FILE, "w") as f:
+            f.write(pwhash + "\n")
+        os.chmod(SYNCTHING_GUI_HASH_FILE, 0o600)
+    except OSError:
+        return
+    conf = f"/home/{user}/.local/state/syncthing/config.xml"
+    if os.path.isfile(conf):
+        patch_py = (
+            "import xml.etree.ElementTree as ET;"
+            f"p='{conf}';"
+            "t=ET.parse(p); r=t.getroot(); g=r.find('gui');"
+            "u=g.find('user') or ET.SubElement(g,'user');"
+            "pwd=g.find('password') or ET.SubElement(g,'password');"
+            f"u.text='{user}'; pwd.text='{pwhash}';"
+            "t.write(p)"
+        )
+        subprocess.run(["python3", "-c", patch_py], capture_output=True)
+        subprocess.run(["systemctl", "restart", f"syncthing@{user}.service"], capture_output=True)
+
+
 def active_ssid():
     """Currently connected WiFi SSID (empty if none / wired / AP mode)."""
     try:
@@ -871,22 +952,53 @@ SAMBA_CMD = ("export DEBIAN_FRONTEND=noninteractive; apt-get install -y samba; "
 # patch every time -- config.xml existing is required for it to run at all).
 def syncthing_cmd(user):
     conf = f"/home/{user}/.local/state/syncthing/config.xml"
+    # Also require a GUI login matching the admin account's password (set at
+    # account-creation/change time -- see set_syncthing_gui_password) instead
+    # of leaving the GUI open with no auth at all now that it's bound to
+    # 0.0.0.0 (reachable from any device on the LAN, not just this box).
+    gui_auth_py = ""
+    try:
+        with open(SYNCTHING_GUI_HASH_FILE) as f:
+            pwhash = f.read().strip()
+        if pwhash:
+            gui_auth_py = (
+                "    gu = g.find('user')\n"
+                "    if gu is None: gu = ET.SubElement(g, 'user')\n"
+                f"    gu.text = '{user}'\n"
+                "    gp = g.find('password')\n"
+                "    if gp is None: gp = ET.SubElement(g, 'password')\n"
+                f"    gp.text = '{pwhash}'\n"
+            )
+    except OSError:
+        pass
+    # Real newlines (not semicolon one-liners) -- this now has actual branching,
+    # which is far less error-prone written as plain Python than crammed into
+    # the and/or one-liner style used elsewhere in this file for simple cases.
     patch_py = (
-        "import xml.etree.ElementTree as ET;"
-        f"p='{conf}';"
-        "t=ET.parse(p); r=t.getroot();"
-        "g=r.find('gui');"
-        "(g is not None) and g.find('address') is not None and setattr(g.find('address'),'text','0.0.0.0:8384');"
-        "f=r.find('folder');"
-        f"(f is not None) and f.set('path','{STORAGE}/syncthing');"
-        "t.write(p)")
+        "import xml.etree.ElementTree as ET\n"
+        f"p = '{conf}'\n"
+        "t = ET.parse(p); r = t.getroot()\n"
+        "g = r.find('gui')\n"
+        "if g is not None:\n"
+        "    if g.find('address') is not None: g.find('address').text = '0.0.0.0:8384'\n"
+        + gui_auth_py +
+        "f = r.find('folder')\n"
+        "if f is not None:\n"
+        f"    f.set('path', '{STORAGE}/syncthing')\n"
+        "t.write(p)\n"
+    )
+    # patch_py is embedded in a DOUBLE-quoted shell string below -- the bcrypt
+    # hash contains literal '$' characters (e.g. $2y$10$...), which bash would
+    # otherwise try to expand as variables inside double quotes, silently
+    # corrupting the hash. Escape them to '\$' so they pass through literally.
+    patch_py_escaped = patch_py.replace("$", "\\$")
     return (
         "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
         f"mkdir -p {STORAGE}/syncthing; chown root:{user} {STORAGE}/syncthing; "
         f"chmod 2775 {STORAGE}/syncthing; "
         f"systemctl enable --now syncthing@{user}.service; sleep 6; "
         f"systemctl stop syncthing@{user}.service; "
-        f"[ -f \"{conf}\" ] && python3 -c \"{patch_py}\"; "
+        f"[ -f \"{conf}\" ] && python3 -c \"{patch_py_escaped}\"; "
         f"systemctl start syncthing@{user}.service")
 # ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
 # under a single 'setup' lock so two apt processes never collide on the dpkg
@@ -1002,6 +1114,8 @@ FACTORY_RESET_PAGE = """<!doctype html><html lang="en" translate="no"><head><met
       text-align:left;white-space:pre-wrap"></pre>
  </details>
  <div id="frDone" style="display:none">
+  <p style="color:#94a3b8;line-height:1.7">Rebooting into <b style="color:#f1f5f9">setup mode</b>…
+   ready in about <span id="frCd" style="color:#f1f5f9;font-weight:700">2:00</span></p>
   <p style="color:#f1f5f9;line-height:1.7">Your gm-nas is rebooting into <b>setup mode</b>.<br><br>
    Once it's back, connect your phone to <b>GMNas-Setup</b><br>
    and open <b>http://192.168.42.1</b><br>to reconfigure.</p>
@@ -1022,6 +1136,16 @@ FACTORY_RESET_PAGE = """<!doctype html><html lang="en" translate="no"><head><met
    clearInterval(iv);
    document.getElementById('frBar').style.width = '100%';
    document.getElementById('frDone').style.display = 'block';
+   // The box actually reboots now (systemctl reboot at the end of
+   // factory-reset.sh) -- give a real countdown for boot + AP startup
+   // instead of implying it's instantly ready.
+   var left = 120, cd = document.getElementById('frCd');
+   var cdIv = setInterval(function(){
+     left--;
+     if (left <= 0) { cd.textContent = 'now'; clearInterval(cdIv); return; }
+     var m = Math.floor(left / 60), s = left % 60;
+     cd.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+   }, 1000);
  }
  var iv = setInterval(function(){
    fetch('/factory-reset/log').then(function(r){ return r.text(); }).then(function(text){
@@ -1156,6 +1280,8 @@ def create_account():
         pass
     # Give this account a matching Samba login so it can open the shares.
     set_smb_password(user, pw)
+    set_syncthing_gui_password(user, pw)
+    disable_console_autologin()
     # Name the unit (so it's reachable at <name>.local — distinguishes units).
     renamed = bool(dev and dev != hostbase())
     if renamed:
@@ -1200,6 +1326,7 @@ def set_password():
     if r.returncode != 0:
         return redirect("/?cls=err&msg=Could not set password.")
     set_smb_password(admin, pw)   # keep the Samba login in sync
+    set_syncthing_gui_password(admin, pw)   # keep Syncthing's GUI login in sync
     try:
         os.remove(PW_FLAG)
     except FileNotFoundError:
