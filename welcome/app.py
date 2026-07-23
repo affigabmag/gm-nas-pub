@@ -366,12 +366,11 @@ PAGE = """<!doctype html>
 
 <div class="modal-bg" id="syncthingPendingModal">
  <div class="modal">
-  <h3>New Syncthing device</h3>
-  <p>Device "<b id="stpName"></b>" (<code id="stpId" style="font-size:11px;word-break:break-all"></code>) wants to connect.</p>
-  <p>Add it, and share the <b>syncthing</b> folder with it?</p>
+  <h3 id="stpTitle">New Syncthing device</h3>
+  <p id="stpBody"></p>
   <div class="modal-actions">
    <button type="button" id="stpIgnore" class="btn-cancel">Ignore</button>
-   <button type="button" id="stpAccept">Add device</button>
+   <button type="button" id="stpAccept">Add</button>
   </div>
  </div>
 </div>
@@ -507,35 +506,65 @@ PAGE = """<!doctype html>
    reopen.addEventListener('click', function(e){ e.preventDefault(); wrap.style.display = 'block'; done.style.display = 'none'; });
  })();
  {% if syncthing == 'ready' %}
- // Poll for a pending (unpaired) Syncthing device -- the same "wants to
- // connect" notification the Syncthing GUI itself shows, but surfaced
- // here so approving it never requires a separate login.
+ // Poll for pending (unpaired) Syncthing devices AND pending folder offers
+ // -- the same "wants to connect" / "wants to share folder" notifications
+ // the Syncthing GUI itself shows, but surfaced here so approving either
+ // never requires a separate login. Confirmed live: a folder offer sat
+ // unseen in that GUI banner while the user assumed sync just wasn't
+ // working -- files never transferred because nothing had accepted it.
  (function(){
    var modal = document.getElementById('syncthingPendingModal');
-   var nameEl = document.getElementById('stpName'), idEl = document.getElementById('stpId');
+   var title = document.getElementById('stpTitle'), body = document.getElementById('stpBody');
    var acceptBtn = document.getElementById('stpAccept'), ignoreBtn = document.getElementById('stpIgnore');
-   var shown = null;
+   var current = null, shown = {};
    function poll(){
      if (modal.classList.contains('open')) return;   // don't yank an open dialog mid-decision
-     fetch('/syncthing/pending').then(function(r){ return r.json(); }).then(function(pending){
-       var ids = Object.keys(pending || {});
-       if (!ids.length) return;
-       var id = ids[0];
-       if (id === shown) return;   // already asked about this one this session (post ignore/accept)
-       nameEl.textContent = (pending[id] && pending[id].name) || id.slice(0, 7);
-       idEl.textContent = id;
-       modal.classList.add('open');
+     fetch('/syncthing/pending').then(function(r){ return r.json(); }).then(function(data){
+       var devices = (data && data.devices) || {}, folders = (data && data.folders) || {};
+       var devIds = Object.keys(devices).filter(function(id){ return shown['d:' + id] !== true; });
+       if (devIds.length) {
+         var id = devIds[0];
+         current = {kind: 'device', id: id};
+         title.textContent = 'New Syncthing device';
+         body.innerHTML = 'Device "<b>' + ((devices[id] && devices[id].name) || id.slice(0, 7)) +
+           '</b>" (<code style="font-size:11px;word-break:break-all">' + id + '</code>) wants to connect.' +
+           ' Add it, and share the <b>syncthing</b> folder with it?';
+         modal.classList.add('open');
+         return;
+       }
+       var folderIds = Object.keys(folders).filter(function(id){ return shown['f:' + id] !== true; });
+       if (folderIds.length) {
+         var fid = folderIds[0], f = folders[fid] || {};
+         var offeredBy = Object.keys(f.offeredBy || {});
+         var devId = offeredBy[0] || '';
+         var label = f.label || fid;
+         current = {kind: 'folder', id: fid, deviceId: devId, label: label};
+         title.textContent = 'New shared folder';
+         body.innerHTML = 'Device wants to share folder "<b>' + label + '</b>" with this box.' +
+           ' Accept it? It will sync into its own new folder here.';
+         modal.classList.add('open');
+       }
      }).catch(function(){});
    }
-   function respond(url){
-     var id = idEl.textContent;
-     shown = id;
+   function respond(accept){
+     if (!current) return;
+     var key = (current.kind === 'device' ? 'd:' : 'f:') + current.id;
+     shown[key] = true;
      modal.classList.remove('open');
-     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                 body: 'device_id=' + encodeURIComponent(id)}).catch(function(){});
+     var url, body_;
+     if (current.kind === 'device') {
+       url = accept ? '/syncthing/pending/accept' : '/syncthing/pending/ignore';
+       body_ = 'device_id=' + encodeURIComponent(current.id);
+     } else {
+       url = accept ? '/syncthing/pending/folder/accept' : '/syncthing/pending/folder/ignore';
+       body_ = 'folder_id=' + encodeURIComponent(current.id) + '&device_id=' + encodeURIComponent(current.deviceId) +
+               '&label=' + encodeURIComponent(current.label);
+     }
+     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body_}).catch(function(){});
+     current = null;
    }
-   acceptBtn.addEventListener('click', function(){ respond('/syncthing/pending/accept'); });
-   ignoreBtn.addEventListener('click', function(){ respond('/syncthing/pending/ignore'); });
+   acceptBtn.addEventListener('click', function(){ respond(true); });
+   ignoreBtn.addEventListener('click', function(){ respond(false); });
    poll();
    setInterval(poll, 5000);
  })();
@@ -1024,14 +1053,20 @@ def syncthing_api(method, path, user, body=None):
 
 @app.route("/syncthing/pending")
 def syncthing_pending():
-    """Devices that have tried to connect but aren't paired yet -- normally
-    only visible as a banner inside the Syncthing GUI itself (requiring a
-    separate login just to see it). Surfaced here so the welcome page can
-    show the same "approve this device?" prompt directly."""
+    """Devices AND folders that are pending but not accepted yet -- both
+    only normally visible as banners inside the Syncthing GUI itself
+    (requiring a separate login just to see them). A phone offering to
+    share one of ITS OWN folders (e.g. Camera/Media) with the box shows up
+    as a pending FOLDER, not a pending device -- confirmed live: a user's
+    files silently weren't syncing because this exact banner sat unseen
+    inside the GUI the whole time. Surfaced here so the welcome page can
+    show the same "accept this?" prompt directly for either kind."""
     if syncthing_state() != "ready":
         return jsonify({})
-    pending = syncthing_api("GET", "/rest/cluster/pending/devices", admin_username())
-    return jsonify(pending or {})
+    user = admin_username()
+    devices = syncthing_api("GET", "/rest/cluster/pending/devices", user) or {}
+    folders = syncthing_api("GET", "/rest/cluster/pending/folders", user) or {}
+    return jsonify(devices=devices, folders=folders)
 
 
 @app.route("/syncthing/pending/accept", methods=["POST"])
@@ -1068,6 +1103,52 @@ def syncthing_pending_ignore():
     ignored = opts.setdefault("ignoredDevices", [])
     if not any(d.get("deviceID") == device_id for d in ignored):
         ignored.append({"deviceID": device_id, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    r = syncthing_api("PUT", "/rest/config", user, body=config)
+    return jsonify(ok=r is not None)
+
+
+@app.route("/syncthing/pending/folder/accept", methods=["POST"])
+def syncthing_pending_folder_accept():
+    user = admin_username()
+    folder_id = request.form.get("folder_id", "").strip()
+    device_id = request.form.get("device_id", "").strip()
+    label = request.form.get("label", "").strip() or folder_id
+    if not folder_id or not device_id:
+        return jsonify(ok=False), 400
+    config = syncthing_api("GET", "/rest/config", user)
+    if config is None:
+        return jsonify(ok=False), 500
+    folders = config.setdefault("folders", [])
+    existing = next((f for f in folders if f.get("id") == folder_id), None)
+    if existing is None:
+        # New local path, sibling to the main "syncthing" folder rather than
+        # nested inside it, so this incoming folder gets its own real space.
+        safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", label).strip("-") or folder_id
+        existing = {"id": folder_id, "label": label, "path": f"{STORAGE}/syncthing-{safe}",
+                    "type": "sendreceive", "devices": []}
+        folders.append(existing)
+    if not any(d.get("deviceID") == device_id for d in existing.get("devices", [])):
+        existing.setdefault("devices", []).append({"deviceID": device_id})
+    r = syncthing_api("PUT", "/rest/config", user, body=config)
+    return jsonify(ok=r is not None)
+
+
+@app.route("/syncthing/pending/folder/ignore", methods=["POST"])
+def syncthing_pending_folder_ignore():
+    user = admin_username()
+    folder_id = request.form.get("folder_id", "").strip()
+    device_id = request.form.get("device_id", "").strip()
+    label = request.form.get("label", "").strip()
+    if not folder_id or not device_id:
+        return jsonify(ok=False), 400
+    config = syncthing_api("GET", "/rest/config", user)
+    if config is None:
+        return jsonify(ok=False), 500
+    dev = next((d for d in config.get("devices", []) if d.get("deviceID") == device_id), None)
+    if dev is not None:
+        ignored = dev.setdefault("ignoredFolders", [])
+        if not any(f.get("id") == folder_id for f in ignored):
+            ignored.append({"id": folder_id, "label": label})
     r = syncthing_api("PUT", "/rest/config", user, body=config)
     return jsonify(ok=r is not None)
 
