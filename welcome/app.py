@@ -223,7 +223,10 @@ PAGE = """<!doctype html>
   <div class="app" style="margin-top:{{ '28px' if ts_login_url else '0' }}">
    <span class="name">Syncthing</span>
    <span class="grow"><span class="desc">Sync files with your phone/PC (no cloud)</span></span>
-   {% if syncthing == 'ready' %}<a class="linkbtn svclink" data-proto="http" data-port="8384" href="http://{{ host }}:8384" target="_blank">Open ↗</a>
+   {% if syncthing == 'ready' %}
+   <button type="button" id="stReconnectBtn" disabled title="Complete the 4 steps below first"
+      style="width:auto;padding:10px 14px;margin-right:8px">Reconnect</button>
+   <a class="linkbtn svclink" data-proto="http" data-port="8384" href="http://{{ host }}:8384" target="_blank">Open ↗</a>
    {% elif syncthing == 'busy' %}<span class="badge b-busy">Installing…</span>
    {% else %}
      <form class="inline" method="post" action="/install/syncthing"><button>Install</button></form>
@@ -232,6 +235,8 @@ PAGE = """<!doctype html>
   {% if syncthing == 'ready' %}
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts.</p>
+  <p id="stGuideHide" class="hint" style="display:none">
+   ✓ Complete. <a href="#" id="stGuideHideLink" style="color:var(--accent)">Hide steps</a></p>
   <div id="stGuideWrap">
    <table class="hint" style="width:100%;border-collapse:collapse;margin:6px 0 0">
     <tr>
@@ -526,16 +531,35 @@ PAGE = """<!doctype html>
    if (!boxes.length) return;
    var wrap = document.getElementById('stGuideWrap');
    var done = document.getElementById('stGuideDone');
+   var hideRow = document.getElementById('stGuideHide');
    var reopen = document.getElementById('stGuideReopen');
+   var hideLink = document.getElementById('stGuideHideLink');
+   var reconnectBtn = document.getElementById('stReconnectBtn');
    var KEY = 'gmnasSyncthingGuideChecked';
+   var EXP_KEY = 'gmnasSyncthingGuideExpanded';
+   var wasAllDone = null;   // null = not yet evaluated once (avoid a false "just completed" on load)
    function save(){
      try { localStorage.setItem(KEY, JSON.stringify(boxes.map(function(b){ return b.checked; }))); } catch(e){}
+   }
+   function setExpanded(v){
+     try { localStorage.setItem(EXP_KEY, v ? '1' : '0'); } catch(e){}
    }
    function refresh(){
      var checked = boxes.map(function(b){ return b.checked; });
      var allDone = checked.every(Boolean);
-     wrap.style.display = allDone ? 'none' : 'block';
-     done.style.display = allDone ? 'block' : 'none';
+     // The moment all 4 become checked (not on a page reload where it was
+     // already complete before) -- force it collapsed, per spec.
+     if (allDone && wasAllDone === false) setExpanded(false);
+     wasAllDone = allDone;
+     var expanded = true;
+     if (allDone) {
+       try { expanded = localStorage.getItem(EXP_KEY) === '1'; } catch(e) { expanded = false; }
+     }
+     wrap.style.display = (!allDone || expanded) ? 'block' : 'none';
+     done.style.display = (allDone && !expanded) ? 'block' : 'none';
+     hideRow.style.display = (allDone && expanded) ? 'block' : 'none';
+     if (reconnectBtn) reconnectBtn.disabled = !allDone;
+     if (reconnectBtn) reconnectBtn.title = allDone ? 'Wipe all pairings and start over' : 'Complete the 4 steps below first';
    }
    var saved = [];
    try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){}
@@ -543,6 +567,7 @@ PAGE = """<!doctype html>
      b.checked = !!saved[i];
      b.disabled = i > 0 && !boxes[i - 1].checked;
    });
+   wasAllDone = boxes.every(function(b){ return b.checked; });   // seed from saved state, not a fresh completion
    refresh();
    boxes.forEach(function(b, i){
      b.addEventListener('change', function(){
@@ -556,7 +581,24 @@ PAGE = """<!doctype html>
        refresh();
      });
    });
-   reopen.addEventListener('click', function(e){ e.preventDefault(); wrap.style.display = 'block'; done.style.display = 'none'; });
+   reopen.addEventListener('click', function(e){ e.preventDefault(); setExpanded(true); refresh(); });
+   hideLink.addEventListener('click', function(e){ e.preventDefault(); setExpanded(false); refresh(); });
+   if (reconnectBtn) {
+     reconnectBtn.addEventListener('click', function(){
+       if (reconnectBtn.disabled) return;
+       if (!confirm('Disconnect all paired devices and unshare the syncthing folder from all of them? You\'ll redo the pairing steps from scratch.')) return;
+       reconnectBtn.disabled = true;
+       fetch('/syncthing/reconnect', {method: 'POST'}).then(function(r){ return r.json(); }).then(function(res){
+         if (res && res.ok) {
+           try { localStorage.removeItem(KEY); localStorage.removeItem(EXP_KEY); } catch(e){}
+           location.reload();
+         } else {
+           reconnectBtn.disabled = false;
+           alert('Could not reset Syncthing pairings -- try again.');
+         }
+       }).catch(function(){ reconnectBtn.disabled = false; alert('Could not reset Syncthing pairings -- try again.'); });
+     });
+   }
  })();
  {% if syncthing == 'ready' %}
  // Poll for pending (unpaired) Syncthing devices AND pending folder offers
@@ -1177,6 +1219,24 @@ def syncthing_pending_folder_ignore():
         ignored = dev.setdefault("ignoredFolders", [])
         if not any(f.get("id") == folder_id for f in ignored):
             ignored.append({"id": folder_id, "label": label})
+    r = syncthing_api("PUT", "/rest/config", user, body=config)
+    return jsonify(ok=r is not None)
+
+
+@app.route("/syncthing/reconnect", methods=["POST"])
+def syncthing_reconnect():
+    """Full reset of Syncthing's pairings -- wipe every paired device and
+    unshare the one "syncthing" folder from all of them, back to a clean
+    just-installed state. Used when the end user wants to redo the whole
+    pairing guide from scratch (gated client-side on all 4 guide steps
+    being checked first, so this isn't one click away by accident)."""
+    user = admin_username()
+    config = syncthing_api("GET", "/rest/config", user)
+    if config is None:
+        return jsonify(ok=False), 500
+    config["devices"] = []
+    for f in config.get("folders", []):
+        f["devices"] = []
     r = syncthing_api("PUT", "/rest/config", user, body=config)
     return jsonify(ok=r is not None)
 
