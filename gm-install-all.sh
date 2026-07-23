@@ -61,18 +61,17 @@ echo "-- apt packages --"
 # enabled that's a large index to re-resolve repeatedly on this hardware.
 retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager lynx dialog figlet
 
-echo "-- sudo: don't re-prompt for a password every few minutes at the console --"
-# Default sudo behavior re-prompts ~15min after the last use, and tracks the
-# timestamp per-tty -- on a single-user console appliance where the gmnas
-# menu shells out to sudo for lots of small actions, that means repeated
-# password prompts corrupting the dialog boxes (see run_boxed's own sudo -v
-# workaround) during one sitting. Once logged in at the console, treat that
-# login as sufficient for a full hour (not indefinitely -- a fixed, bounded
-# window is preferred over "never expire"), and share the cache across
-# ttys/pty's the menu might invoke things from.
+echo "-- sudo: logging in is the only auth check needed here, don't ask again --"
+# This is a single-admin appliance: whoever can log in at all (console
+# password, or the account the wizard creates) is already the trusted
+# admin. Asking for a SECOND password immediately after login, just to run
+# sudo, is redundant friction -- and on a console appliance where the gmnas
+# menu shells out to sudo for lots of small actions, the default ~15min
+# per-tty re-prompt also corrupts dialog boxes mid-render (see run_boxed's
+# own sudo -v workaround). NOPASSWD for the sudo group removes the second
+# prompt entirely; logging in remains the one real gate.
 cat > /etc/sudoers.d/90-gmnas-sudo-cache <<'EOF'
-Defaults:%sudo timestamp_timeout=60
-Defaults:%sudo !tty_tickets
+%sudo ALL=(ALL) NOPASSWD:ALL
 EOF
 chmod 440 /etc/sudoers.d/90-gmnas-sudo-cache
 visudo -cf /etc/sudoers.d/90-gmnas-sudo-cache >/dev/null 2>&1 || rm -f /etc/sudoers.d/90-gmnas-sudo-cache

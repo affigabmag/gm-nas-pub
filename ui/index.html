@@ -373,7 +373,7 @@
         body: body
       }).catch(function () {});
 
-      // Step 2 — after a short wait, show the done screen + a 2-minute
+      // Step 2 — after a short wait, show the done screen + a 4-minute
       // restart countdown (the gm-nas reboots and comes up on the new WiFi).
       setTimeout(function () {
         panel(
@@ -389,7 +389,7 @@
               '<b style="color:var(--fg)">Android:</b> .local may not work — open the ' +
               '<b style="color:var(--fg)">IP address</b> shown on the gm-nas screen instead.' +
             '</div>' +
-            '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 3:00</div>' +
+            '<div id="cd" style="margin-top:18px;font-size:26px;font-weight:700;color:var(--accent)">Restarting… 4:00</div>' +
             '<div id="scanbarWrap" style="display:none;margin-top:18px">' +
               '<div class="scanbar"><div class="scanbar-fill"></div></div>' +
             '</div>' +
@@ -409,7 +409,7 @@
             '</div>' +
           '</div>'
         );
-        var left = 180, el = document.getElementById('cd');
+        var left = 240, el = document.getElementById('cd');
         var scanbarWrap = document.getElementById('scanbarWrap');
         var logEl = document.getElementById('scanlog');
         var logToggle = document.getElementById('logToggle');

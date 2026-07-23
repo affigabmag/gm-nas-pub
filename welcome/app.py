@@ -219,12 +219,18 @@ PAGE = """<!doctype html>
    directly over your home network — no cloud, no accounts.</p>
   <ol class="hint" style="margin:6px 0 0;padding-left:18px;line-height:1.9">
    <li>Install the app on your phone (links below).</li>
-   <li>Open <b>Syncthing</b> above (same login as this box), then <b>Actions → Show QR code</b>.</li>
-   <li>In the phone app, add a device and scan that QR code (or type the Device ID).</li>
+   <li>In the phone app, add a device and scan the QR code below (or type the Device ID).</li>
    <li>Accept the pairing request on <b>both</b> sides — the box and the phone.</li>
-   <li>On the box, share the <b>syncthing</b> folder with the new device.</li>
+   <li>Open <b>Syncthing</b> above and share the <b>syncthing</b> folder with the new device.</li>
    <li>On the phone, accept the folder share and pick where it should sync to.</li>
   </ol>
+  <div style="text-align:center;margin:14px 0">
+   <img src="/syncthing/qr.png" alt="Syncthing Device ID QR code" width="180" height="180"
+        style="background:#fff;padding:8px;border-radius:8px"
+        onerror="this.style.display='none'; document.getElementById('stQrFallback').style.display='block'">
+   <p id="stQrFallback" class="hint" style="display:none">
+    QR code not available yet — open <b>Syncthing</b> above and use <b>Actions → Show QR code</b> instead.</p>
+  </div>
   <div class="links" style="align-items:start;gap:14px">
    <div>
     <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
@@ -777,6 +783,39 @@ def syncthing_state():
     return "busy" if is_installing("setup") else "off"
 
 
+def syncthing_device_id(user):
+    """The box's Syncthing Device ID, without needing the GUI/login at all --
+    `syncthing --device-id` derives it straight from the cert on disk (no
+    daemon, no auth needed), same value the GUI would show under Actions."""
+    home_dir = f"/home/{user}/.local/state/syncthing"
+    try:
+        out = subprocess.check_output(["syncthing", "--home", home_dir, "--device-id"],
+                                      text=True, stderr=subprocess.DEVNULL, timeout=10)
+        return out.strip()
+    except Exception:
+        return ""
+
+
+@app.route("/syncthing/qr.png")
+def syncthing_qr():
+    """QR code for the box's Syncthing Device ID -- rendered right on this
+    page so pairing a phone never requires logging into the Syncthing GUI
+    at all. qrencode runs entirely offline (no external image service)."""
+    did = syncthing_device_id(admin_username())
+    qrencode = shutil.which("qrencode")
+    if not did or not qrencode:
+        return ("", 404)
+    try:
+        r = subprocess.run([qrencode, "-o", "-", "-t", "PNG", "-s", "6", did],
+                           capture_output=True, timeout=10)
+        if r.returncode != 0 or not r.stdout:
+            return ("", 404)
+    except Exception:
+        return ("", 404)
+    return app.response_class(r.stdout, mimetype="image/png",
+                              headers={"Cache-Control": "no-store"})
+
+
 def tailscale_login_url():
     """Scrape the most recent login URL from the tailscale-up install log."""
     _, log = _paths("tailscale")
@@ -1005,7 +1044,7 @@ def syncthing_cmd(user):
     # corrupting the hash. Escape them to '\$' so they pass through literally.
     patch_py_escaped = patch_py.replace("$", "\\$")
     return (
-        "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing; "
+        "export DEBIAN_FRONTEND=noninteractive; apt-get install -y syncthing qrencode; "
         f"mkdir -p {STORAGE}/syncthing; chown root:{user} {STORAGE}/syncthing; "
         f"chmod 2775 {STORAGE}/syncthing; "
         f"systemctl enable --now syncthing@{user}.service; sleep 6; "
