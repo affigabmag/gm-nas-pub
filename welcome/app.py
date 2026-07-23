@@ -55,6 +55,12 @@ PAGE = """<!doctype html>
 <html lang="en" translate="no"><head><meta charset="utf-8">
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/gmnas-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/gmnas-icon.svg">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>gm-nas</title>
 <style>
  :root{--bg:#0f172a;--card:#1e293b;--fg:#f1f5f9;--muted:#94a3b8;--accent:#38bdf8;
@@ -152,6 +158,14 @@ PAGE = """<!doctype html>
  </header>
 
  {% if msg %}<div class="card" id="msgCard" style="transition:opacity .4s"><div class="msg {{ msgcls }}">{{ msg }}</div></div>{% endif %}
+
+ <div class="card" id="installBanner" style="display:none">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+   <span style="flex:1;min-width:160px" id="installBannerText">Add gm-nas to your home screen for one-tap access.</span>
+   <button type="button" id="installBtn" style="width:auto;padding:10px 16px">Install</button>
+   <button type="button" id="installDismiss" class="btn-cancel" style="width:auto;padding:10px 16px">Not now</button>
+  </div>
+ </div>
 
  {% if password_not_set %}
  <div class="card"><h2>1. Create your admin account</h2>
@@ -417,6 +431,44 @@ PAGE = """<!doctype html>
      m.style.opacity = '0';
      setTimeout(function(){ m.style.display = 'none'; }, 400);
    }, 5000);
+ })();
+ // Offer to install as an app (home screen shortcut / desktop app) --
+ // Chrome/Android/desktop-Chrome get the real native prompt via
+ // beforeinstallprompt; iOS Safari has no such API at all, so it gets
+ // manual "Share -> Add to Home Screen" instructions instead. Dismissal
+ // is remembered so it doesn't nag on every visit.
+ (function(){
+   var DISMISS_KEY = 'gmnasInstallDismissed';
+   var banner = document.getElementById('installBanner');
+   var text = document.getElementById('installBannerText');
+   var installBtn = document.getElementById('installBtn');
+   var dismissBtn = document.getElementById('installDismiss');
+   var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+   standalone = standalone || window.navigator.standalone === true;
+   if (standalone) return;   // already installed/running as an app
+   try { if (localStorage.getItem(DISMISS_KEY)) return; } catch(e){}
+   dismissBtn.addEventListener('click', function(){
+     banner.style.display = 'none';
+     try { localStorage.setItem(DISMISS_KEY, '1'); } catch(e){}
+   });
+   var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+   var deferred = null;
+   window.addEventListener('beforeinstallprompt', function(e){
+     e.preventDefault();
+     deferred = e;
+     banner.style.display = 'block';
+   });
+   installBtn.addEventListener('click', function(){
+     if (deferred) {
+       deferred.prompt();
+       deferred.userChoice.finally(function(){ deferred = null; banner.style.display = 'none'; });
+     }
+   });
+   if (isIOS) {
+     text.textContent = 'Add gm-nas to your home screen: tap Share, then "Add to Home Screen".';
+     installBtn.style.display = 'none';   // no install API on iOS -- instructions only
+     banner.style.display = 'block';
+   }
  })();
  document.querySelectorAll('.eye').forEach(function(btn){
    btn.addEventListener('click', function(){
@@ -1626,6 +1678,37 @@ def gmnas_id():
     return app.response_class(_MARKER_PNG, mimetype="image/png",
                               headers={"Access-Control-Allow-Origin": "*",
                                        "Cache-Control": "no-store"})
+
+
+# --- PWA install (Add to Home Screen / desktop shortcut) --------------------
+# SVG icon reused as-is from the page header logo -- modern browsers accept
+# image/svg+xml directly in a manifest, so no PNG generation/dependency is
+# needed just to make the box installable as an app.
+_GMNAS_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="192" height="192">'
+    '<rect width="24" height="24" rx="5" fill="#38bdf8"/>'
+    '<g fill="none" stroke="#04263a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/>'
+    '<circle cx="6.6" cy="7.5" r="0.9" fill="#04263a" stroke="none"/>'
+    '<circle cx="6.6" cy="16.5" r="0.9" fill="#04263a" stroke="none"/>'
+    '<line x1="9.5" y1="7.5" x2="17.5" y2="7.5"/><line x1="9.5" y1="16.5" x2="17.5" y2="16.5"/>'
+    '</g></svg>'
+)
+
+
+@app.route("/gmnas-icon.svg")
+def gmnas_icon():
+    return app.response_class(_GMNAS_ICON_SVG, mimetype="image/svg+xml",
+                              headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.route("/manifest.json")
+def gmnas_manifest():
+    return jsonify(
+        name="gm-nas", short_name="gm-nas",
+        start_url="/", display="standalone",
+        background_color="#0f172a", theme_color="#0f172a",
+        icons=[{"src": "/gmnas-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}])
 
 
 RESERVED_USERS = {"root", "gmnas", "gmadmin", "daemon", "bin", "sys", "sync",
