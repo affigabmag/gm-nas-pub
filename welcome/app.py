@@ -230,6 +230,13 @@ PAGE = """<!doctype html>
         onerror="this.style.display='none'; document.getElementById('stQrFallback').style.display='block'">
    <p id="stQrFallback" class="hint" style="display:none">
     QR code not available yet — open <b>Syncthing</b> above and use <b>Actions → Show QR code</b> instead.</p>
+   {% if syncthing_device_id %}
+   <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px">
+    <code id="stDeviceId" style="font-size:11px;color:var(--muted);word-break:break-all;max-width:280px">{{ syncthing_device_id }}</code>
+    <button type="button" id="stCopyBtn" title="Copy Device ID"
+       style="width:auto;padding:6px 10px;font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border);cursor:pointer">📋 Copy</button>
+   </div>
+   {% endif %}
   </div>
   <div class="links" style="align-items:start;gap:14px">
    <div>
@@ -384,6 +391,22 @@ PAGE = """<!doctype html>
      btn.title = show ? 'Hide password' : 'Show password';
    });
  });
+ (function(){
+   var copyBtn = document.getElementById('stCopyBtn');
+   if (!copyBtn) return;
+   copyBtn.addEventListener('click', function(){
+     var text = document.getElementById('stDeviceId').textContent;
+     var done = function(ok){
+       copyBtn.textContent = ok ? '✓ Copied' : 'Select & copy manually';
+       setTimeout(function(){ copyBtn.textContent = '📋 Copy'; }, 2000);
+     };
+     if (navigator.clipboard && navigator.clipboard.writeText) {
+       navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ done(false); });
+     } else {
+       done(false);
+     }
+   });
+ })();
  // Install-progress refresh — reload every 5s to update app badges, but ONLY
  // while no text field is focused, so typing is never interrupted/wiped.
  {% if busy %}
@@ -1099,6 +1122,7 @@ def index():
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale, syncthing=syncthing,
+        syncthing_device_id=(syncthing_device_id(admin_username()) if syncthing == "ready" else ""),
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(), appver=WELCOME_VER, build=build_version(),
         online=have_internet(), ip=box_ip(),
