@@ -61,6 +61,21 @@ echo "-- apt packages --"
 # enabled that's a large index to re-resolve repeatedly on this hardware.
 retry apt-get install -y avahi-daemon btop ttyd samba python3-flask cockpit nfs-kernel-server network-manager lynx dialog figlet
 
+echo "-- sudo: don't re-prompt for a password every few minutes at the console --"
+# Default sudo behavior re-prompts ~15min after the last use, and tracks the
+# timestamp per-tty -- on a single-user console appliance where the gmnas
+# menu shells out to sudo for lots of small actions, that means repeated
+# password prompts corrupting the dialog boxes (see run_boxed's own sudo -v
+# workaround) during one sitting. Once logged in at the console, treat that
+# login as sufficient for the rest of the session: cache sudo indefinitely
+# and share the cache across ttys/pty's the menu might invoke things from.
+cat > /etc/sudoers.d/90-gmnas-sudo-cache <<'EOF'
+Defaults:%sudo timestamp_timeout=-1
+Defaults:%sudo !tty_tickets
+EOF
+chmod 440 /etc/sudoers.d/90-gmnas-sudo-cache
+visudo -cf /etc/sudoers.d/90-gmnas-sudo-cache >/dev/null 2>&1 || rm -f /etc/sudoers.d/90-gmnas-sudo-cache
+
 echo "-- enabling services --"
 systemctl enable --now ssh avahi-daemon 2>/dev/null || true
 systemctl enable --now smbd nmbd 2>/dev/null || true
