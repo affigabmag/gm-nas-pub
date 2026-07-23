@@ -36,7 +36,18 @@ if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManage
     # after we ask it to reconnect with a NEW (possibly wrong) password --
     # checking "is there any IP" alone reads that stale lease as success.
     # Disconnect first so a failed auth genuinely has no IP to show.
-    [ -n "$DEV" ] && nmcli device disconnect "$DEV" >/dev/null 2>&1
+    if [ -n "$DEV" ]; then
+        nmcli device disconnect "$DEV" >/dev/null 2>&1
+        # Wait for the teardown to actually finish -- reconnecting while the
+        # device is still "deactivating" can fail for reasons that have
+        # nothing to do with the password, and get misreported as a wrong
+        # password (intermittently, since it's a race).
+        for _ in $(seq 1 10); do
+            st="$(nmcli -t -f DEVICE,STATE device 2>/dev/null | awk -F: -v d="$DEV" '$1==d{print $2}')"
+            [ "$st" = "disconnected" ] && break
+            sleep 0.5
+        done
+    fi
     nmcli connection delete "$SSID" 2>/dev/null || true
     nmcli connection add type wifi con-name "$SSID" ${DEV:+ifname "$DEV"} ssid "$SSID" \
         wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
@@ -44,6 +55,12 @@ if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManage
         && echo "  connection '$SSID' created"
     NEW_UUID="$(nmcli -t -f connection.uuid connection show "$SSID" 2>/dev/null | cut -d: -f2)"
     up_err="$(nmcli connection up "$SSID" 2>&1)"; up_rc=$?
+    if [ "$up_rc" -ne 0 ]; then
+        # One retry -- a transient device-state race on the first attempt is
+        # common and shouldn't be reported as a wrong password.
+        sleep 2
+        up_err="$(nmcli connection up "$SSID" 2>&1)"; up_rc=$?
+    fi
     sleep 2
     active_uuid="$(nmcli -t -f GENERAL.CON-UUID device show "$DEV" 2>/dev/null | cut -d: -f2)"
     ip=""
@@ -54,7 +71,17 @@ if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManage
         echo ">> Connected to '$SSID'. IP: $ip"
         mkdir -p /etc/homenas; touch /etc/homenas/provisioned
     else
-        echo ">> Failed to connect to '$SSID' -- wrong password, or out of range."
+        # Don't guess "wrong password" when nmcli's own error says something
+        # else entirely -- e.g. "base network connection was interrupted"
+        # is NetworkManager reporting the activation got yanked out from
+        # under it (a device-state race), which has nothing to do with the
+        # password and was misleading people into re-entering a correct one.
+        case "$up_err" in
+            *"802-1x"*|*supplicant*|*"Secrets were required"*|*"No reason given"*)
+                echo ">> Failed to connect to '$SSID' -- wrong password, or out of range." ;;
+            *)
+                echo ">> Failed to connect to '$SSID'." ;;
+        esac
         [ -n "$up_err" ] && echo "   nmcli: $up_err"
         nmcli connection delete "$SSID" 2>/dev/null || true
         echo "   Re-run 'Connect to WiFi' from the menu to try again."
