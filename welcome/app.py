@@ -219,7 +219,7 @@ PAGE = """<!doctype html>
    directly over your home network — no cloud, no accounts.</p>
   <ol class="hint" style="margin:6px 0 0;padding-left:18px;line-height:1.9">
    <li>Install the app on your phone (links below).</li>
-   <li>In the phone app, add a device and scan the QR code below (or type the Device ID).</li>
+   <li>In the phone app, add a device and scan the QR code below, or copy/paste the Device ID next to it.</li>
    <li>Accept the pairing request on <b>both</b> sides — the box and the phone.</li>
    <li>Open <b>Syncthing</b> above and share the <b>syncthing</b> folder with the new device.</li>
    <li>On the phone, accept the folder share and pick where it should sync to.</li>
