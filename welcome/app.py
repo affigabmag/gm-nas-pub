@@ -1184,7 +1184,20 @@ def syncthing_pending_accept():
         config.setdefault("devices", []).append({"deviceID": device_id, "name": name})
     # Share the (one) syncthing folder with the newly-added device automatically
     # -- matches the guide's step 4, so accepting here does both at once.
-    for f in config.get("folders", []):
+    folders = config.setdefault("folders", [])
+    if not folders:
+        # Defensive: confirmed live that the base folder can end up missing
+        # entirely (Syncthing's fresh-config folder wasn't there for reasons
+        # unrelated to this route), which made device-accept silently share
+        # nothing at all, no error, nothing visible to the user. Recreate it
+        # rather than trust it always exists.
+        path = f"{STORAGE}/syncthing"
+        os.makedirs(path, exist_ok=True)
+        subprocess.run(["chown", f"root:{user}", path], capture_output=True)
+        subprocess.run(["chmod", "2775", path], capture_output=True)
+        folders.append({"id": "syncthing", "label": "syncthing", "path": path,
+                        "type": "sendreceive", "devices": []})
+    for f in folders:
         if not any(d.get("deviceID") == device_id for d in f.get("devices", [])):
             f.setdefault("devices", []).append({"deviceID": device_id})
     r = syncthing_api("PUT", "/rest/config", user, body=config)
