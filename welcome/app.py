@@ -679,10 +679,13 @@ PAGE = """<!doctype html>
      location.reload();
  }, 5000);
  {% endif %}
- // Point Cockpit/Terminal links at the SAME host you're using now (IP, .local,
- // or Tailscale) — the baked-in .local name doesn't resolve on Windows/Android.
+ // Always point Cockpit/Terminal/Syncthing links at the box's actual IP,
+ // never the .local name -- confirmed unreliable (especially Android;
+ // Windows too), even when the CURRENT page itself was reached via
+ // .local. Falls back to location.hostname only if the server didn't
+ // supply an IP for some reason (e.g. genuinely offline).
  (function(){
-   var h = location.hostname;
+   var h = {{ (ip or '')|tojson }} || location.hostname;
    document.querySelectorAll('.svclink').forEach(function(a){
      a.href = a.dataset.proto + '://' + h + ':' + a.dataset.port;
    });
