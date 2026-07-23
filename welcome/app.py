@@ -51,7 +51,8 @@ RUN_DIR = "/run/gmnas"
 LOG_DIR = "/var/log/gm-nas"
 
 PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en" translate="no"><head><meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gm-nas</title>
 <style>
@@ -977,7 +978,8 @@ FACTORY_RESET_STEPS = [
     ("rebooting now", "Rebooting into setup mode"),
 ]
 
-FACTORY_RESET_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+FACTORY_RESET_PAGE = """<!doctype html><html lang="en" translate="no"><head><meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gm-nas — factory reset</title></head>
 <body style="margin:0;background:#0f172a;color:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;
