@@ -217,13 +217,17 @@ PAGE = """<!doctype html>
   {% if syncthing == 'ready' %}
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts.</p>
-  <ol class="hint" style="margin:6px 0 0;padding-left:18px;line-height:1.9">
-   <li>Install the app on your phone (links below).</li>
-   <li>In the phone app, add a device and scan the QR code below, or copy/paste the Device ID next to it.</li>
-   <li>Accept the pairing request on <b>both</b> sides — the box and the phone.</li>
-   <li>Open <b>Syncthing</b> above and share the <b>syncthing</b> folder with the new device.</li>
-   <li>On the phone, accept the folder share and pick where it should sync to.</li>
-  </ol>
+  <div id="stGuideWrap">
+   <ul class="hint" style="list-style:none;margin:6px 0 0;padding-left:0;line-height:1.9">
+    <li><label style="cursor:pointer"><input type="checkbox" class="stStep" data-i="0"> Install the app on your phone (links below).</label></li>
+    <li><label style="cursor:pointer"><input type="checkbox" class="stStep" data-i="1" disabled> In the phone app, add a device and scan the QR code below, or copy/paste the Device ID next to it.</label></li>
+    <li><label style="cursor:pointer"><input type="checkbox" class="stStep" data-i="2" disabled> Accept the pairing request on <b>both</b> sides — the box and the phone.</label></li>
+    <li><label style="cursor:pointer"><input type="checkbox" class="stStep" data-i="3" disabled> Open <b>Syncthing</b> above and share the <b>syncthing</b> folder with the new device.</label></li>
+    <li><label style="cursor:pointer"><input type="checkbox" class="stStep" data-i="4" disabled> On the phone, accept the folder share and pick where it should sync to.</label></li>
+   </ul>
+  </div>
+  <p id="stGuideDone" class="hint" style="display:none">
+   ✓ Setup steps complete. <a href="#" id="stGuideReopen" style="color:var(--accent)">Show steps again</a></p>
   <div style="text-align:center;margin:14px 0">
    <img src="/syncthing/qr.png?t={{ qr_cache_bust }}" alt="Syncthing Device ID QR code" width="180" height="180"
         style="background:#fff;padding:8px;border-radius:8px"
@@ -444,6 +448,48 @@ PAGE = """<!doctype html>
        legacyCopy();
      }
    });
+ })();
+ // Syncthing pairing guide: each step unlocks the next once checked, and
+ // the whole list collapses to a one-line "done" summary once all 5 are
+ // checked (still re-openable). Persisted in localStorage so progress
+ // survives page reloads -- this is a multi-minute, cross-device process
+ // (switching to the phone app and back), not a one-shot form.
+ (function(){
+   var boxes = Array.prototype.slice.call(document.querySelectorAll('.stStep'));
+   if (!boxes.length) return;
+   var wrap = document.getElementById('stGuideWrap');
+   var done = document.getElementById('stGuideDone');
+   var reopen = document.getElementById('stGuideReopen');
+   var KEY = 'gmnasSyncthingGuideChecked';
+   function save(){
+     try { localStorage.setItem(KEY, JSON.stringify(boxes.map(function(b){ return b.checked; }))); } catch(e){}
+   }
+   function refresh(){
+     var checked = boxes.map(function(b){ return b.checked; });
+     var allDone = checked.every(Boolean);
+     wrap.style.display = allDone ? 'none' : 'block';
+     done.style.display = allDone ? 'block' : 'none';
+   }
+   var saved = [];
+   try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){}
+   boxes.forEach(function(b, i){
+     b.checked = !!saved[i];
+     b.disabled = i > 0 && !boxes[i - 1].checked;
+   });
+   refresh();
+   boxes.forEach(function(b, i){
+     b.addEventListener('change', function(){
+       if (b.checked) {
+         if (i + 1 < boxes.length) boxes[i + 1].disabled = false;
+       } else {
+         // unchecking re-locks everything after it too
+         for (var j = i + 1; j < boxes.length; j++) { boxes[j].checked = false; boxes[j].disabled = true; }
+       }
+       save();
+       refresh();
+     });
+   });
+   reopen.addEventListener('click', function(e){ e.preventDefault(); wrap.style.display = 'block'; done.style.display = 'none'; });
  })();
  {% if syncthing == 'ready' %}
  // Poll for a pending (unpaired) Syncthing device -- the same "wants to
