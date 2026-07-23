@@ -81,6 +81,7 @@ PAGE = """<!doctype html>
   padding:12px;background:#0b1220;color:var(--fg)}
  button{margin-top:16px;width:100%;background:var(--accent);color:var(--accent-fg);font-weight:700;
   border:none;border-radius:10px;padding:14px;font-size:15px;cursor:pointer}
+ button:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;opacity:.6}
  .links{display:grid;grid-template-columns:1fr 1fr;gap:12px}
  .links a{display:block;text-align:center;text-decoration:none;color:var(--fg);
   background:#0b1220;border:1px solid var(--border);border-radius:10px;padding:16px;font-weight:500}
