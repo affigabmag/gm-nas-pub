@@ -45,7 +45,7 @@ if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManage
     NEW_UUID="$(nmcli -t -f connection.uuid connection show "$SSID" 2>/dev/null | cut -d: -f2)"
     up_err="$(nmcli connection up "$SSID" 2>&1)"; up_rc=$?
     sleep 2
-    active_uuid="$(nmcli -t -f GENERAL.CONNECTION device show "$DEV" 2>/dev/null | cut -d: -f2)"
+    active_uuid="$(nmcli -t -f GENERAL.CON-UUID device show "$DEV" 2>/dev/null | cut -d: -f2)"
     ip=""
     [ "$up_rc" -eq 0 ] && [ -n "$NEW_UUID" ] && [ "$active_uuid" = "$NEW_UUID" ] \
         && ip="$(ip -4 -o addr show dev "$DEV" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
