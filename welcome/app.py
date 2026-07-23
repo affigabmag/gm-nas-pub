@@ -585,35 +585,36 @@ PAGE = """<!doctype html>
          modal.classList.add('open');
          return;
        }
-       var folderIds = Object.keys(folders).filter(function(id){ return shown['f:' + id] !== true; });
-       if (folderIds.length) {
-         var fid = folderIds[0], f = folders[fid] || {};
-         var offeredBy = Object.keys(f.offeredBy || {});
-         var devId = offeredBy[0] || '';
-         var label = f.label || fid;
-         current = {kind: 'folder', id: fid, deviceId: devId, label: label};
-         title.textContent = 'New shared folder';
-         body.innerHTML = 'Device wants to share folder "<b>' + label + '</b>" with this box.' +
-           ' Accept it? It will sync into its own new folder here.';
-         modal.classList.add('open');
-       }
+       // Keep it simple: exactly one folder ever, at /srv/storage/syncthing.
+       // A device-offered folder can only ever become a SEPARATE folder in
+       // Syncthing (folders are matched by ID, not mergeable by path), so
+       // there's no "accept" that keeps to a single folder -- auto-ignore
+       // these instead of asking, silently and permanently (both here and
+       // in Syncthing's own GUI banner). To actually sync with the phone,
+       // add the phone as a device to the existing "syncthing" folder
+       // instead of it offering one of its own.
+       Object.keys(folders).forEach(function(fid){
+         if (shown['f:' + fid]) return;
+         shown['f:' + fid] = true;
+         var f = folders[fid] || {};
+         var devId = Object.keys(f.offeredBy || {})[0] || '';
+         fetch('/syncthing/pending/folder/ignore', {
+           method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+           body: 'folder_id=' + encodeURIComponent(fid) + '&device_id=' + encodeURIComponent(devId) +
+                 '&label=' + encodeURIComponent(f.label || fid)
+         }).catch(function(){});
+       });
      }).catch(function(){});
    }
    function respond(accept){
+     // Only pending DEVICES ever reach this dialog now -- folder offers are
+     // auto-ignored above, silently, to keep to exactly one folder.
      if (!current) return;
-     var key = (current.kind === 'device' ? 'd:' : 'f:') + current.id;
-     shown[key] = true;
+     shown['d:' + current.id] = true;
      modal.classList.remove('open');
-     var url, body_;
-     if (current.kind === 'device') {
-       url = accept ? '/syncthing/pending/accept' : '/syncthing/pending/ignore';
-       body_ = 'device_id=' + encodeURIComponent(current.id);
-     } else {
-       url = accept ? '/syncthing/pending/folder/accept' : '/syncthing/pending/folder/ignore';
-       body_ = 'folder_id=' + encodeURIComponent(current.id) + '&device_id=' + encodeURIComponent(current.deviceId) +
-               '&label=' + encodeURIComponent(current.label);
-     }
-     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body_}).catch(function(){});
+     var url = accept ? '/syncthing/pending/accept' : '/syncthing/pending/ignore';
+     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                 body: 'device_id=' + encodeURIComponent(current.id)}).catch(function(){});
      current = null;
    }
    acceptBtn.addEventListener('click', function(){ respond(true); });
@@ -1156,44 +1157,6 @@ def syncthing_pending_ignore():
     ignored = opts.setdefault("ignoredDevices", [])
     if not any(d.get("deviceID") == device_id for d in ignored):
         ignored.append({"deviceID": device_id, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-    r = syncthing_api("PUT", "/rest/config", user, body=config)
-    return jsonify(ok=r is not None)
-
-
-@app.route("/syncthing/pending/folder/accept", methods=["POST"])
-def syncthing_pending_folder_accept():
-    user = admin_username()
-    folder_id = request.form.get("folder_id", "").strip()
-    device_id = request.form.get("device_id", "").strip()
-    label = request.form.get("label", "").strip() or folder_id
-    if not folder_id or not device_id:
-        return jsonify(ok=False), 400
-    config = syncthing_api("GET", "/rest/config", user)
-    if config is None:
-        return jsonify(ok=False), 500
-    folders = config.setdefault("folders", [])
-    existing = next((f for f in folders if f.get("id") == folder_id), None)
-    if existing is None:
-        # New local path, sibling to the main "syncthing" folder rather than
-        # nested inside it, so this incoming folder gets its own real space.
-        safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", label).strip("-") or folder_id
-        path = f"{STORAGE}/syncthing-{safe}"
-        # Must pre-create + chown this ourselves (as root, here) -- confirmed
-        # live: Syncthing itself (running as the admin user, not root) can't
-        # mkdir directly under /srv/storage, since that directory is owned
-        # by root:gmnas and the wizard-created admin account was never added
-        # to the "gmnas" group. The ORIGINAL single "syncthing" folder never
-        # hit this because syncthing_cmd() already pre-creates + chowns it
-        # the same way -- this new-folder path just hadn't gotten the same
-        # treatment yet.
-        os.makedirs(path, exist_ok=True)
-        subprocess.run(["chown", f"root:{user}", path], capture_output=True)
-        subprocess.run(["chmod", "2775", path], capture_output=True)
-        existing = {"id": folder_id, "label": label, "path": path,
-                    "type": "sendreceive", "devices": []}
-        folders.append(existing)
-    if not any(d.get("deviceID") == device_id for d in existing.get("devices", [])):
-        existing.setdefault("devices", []).append({"deviceID": device_id})
     r = syncthing_api("PUT", "/rest/config", user, body=config)
     return jsonify(ok=r is not None)
 
