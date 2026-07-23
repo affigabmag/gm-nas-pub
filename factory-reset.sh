@@ -56,13 +56,37 @@ fi
 rm -f "$SHARES_JSON" "$SHARES_SEEDED_FLAG"
 log "cleared shares.json + seeded flag -- defaults reseed on next welcome load"
 
-# --- Wipe all user data on storage partition -----
-log "erasing all user files from /srv/storage"
-rm -rf /srv/storage/* 2>/dev/null || true
-mkdir -p /srv/storage 2>/dev/null || true
-chown root:gmnas /srv/storage 2>/dev/null || true
-chmod 2775 /srv/storage 2>/dev/null || true
-log "storage partition cleared and reset to factory state"
+# --- Wipe storage: reformat the partition instead of rm -rf (seconds, not
+# minutes on a large disk, and guarantees a truly clean filesystem) ---------
+log "locating storage partition"
+STORAGE_DEV="$(findmnt -no SOURCE /srv/storage 2>/dev/null)"
+STORAGE_FSTYPE="$(findmnt -no FSTYPE /srv/storage 2>/dev/null)"
+STORAGE_UUID="$(blkid -s UUID -o value "$STORAGE_DEV" 2>/dev/null)"
+
+if [ -n "$STORAGE_DEV" ]; then
+    log "unmounting $STORAGE_DEV"
+    umount /srv/storage 2>/dev/null || fuser -km /srv/storage 2>/dev/null
+    sleep 1
+    umount /srv/storage 2>/dev/null || true
+
+    log "reformatting $STORAGE_DEV ($STORAGE_FSTYPE) -- keeping UUID so fstab still matches"
+    case "$STORAGE_FSTYPE" in
+        ext4|"") mkfs.ext4 -F -q -L storage ${STORAGE_UUID:+-U "$STORAGE_UUID"} "$STORAGE_DEV" ;;
+        *)       mkfs.ext4 -F -q -L storage ${STORAGE_UUID:+-U "$STORAGE_UUID"} "$STORAGE_DEV" ;;
+    esac
+
+    mkdir -p /srv/storage
+    mount /srv/storage 2>/dev/null || mount -a
+    chown root:gmnas /srv/storage 2>/dev/null || true
+    chmod 2775 /srv/storage 2>/dev/null || true
+    log "storage partition reformatted and reset to factory state"
+else
+    log "WARNING: could not resolve /srv/storage's device, falling back to rm -rf"
+    rm -rf /srv/storage/* 2>/dev/null || true
+    mkdir -p /srv/storage 2>/dev/null || true
+    chown root:gmnas /srv/storage 2>/dev/null || true
+    chmod 2775 /srv/storage 2>/dev/null || true
+fi
 
 # --- Back to the b1 flow: welcome page asks for a fresh account again -------
 mkdir -p "$(dirname "$PW_FLAG")"
