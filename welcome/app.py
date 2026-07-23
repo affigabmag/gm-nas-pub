@@ -587,7 +587,7 @@ PAGE = """<!doctype html>
    if (reconnectBtn) {
      reconnectBtn.addEventListener('click', function(){
        if (reconnectBtn.disabled) return;
-       if (!confirm('Disconnect all paired devices and unshare the syncthing folder from all of them? You\'ll redo the pairing steps from scratch.')) return;
+       if (!confirm("Disconnect all paired devices and unshare the syncthing folder from all of them? You will redo the pairing steps from scratch.")) return;
        reconnectBtn.disabled = true;
        fetch('/syncthing/reconnect', {method: 'POST'}).then(function(r){ return r.json(); }).then(function(res){
          if (res && res.ok) {
