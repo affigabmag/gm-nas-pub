@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.158.20260723022312"   # bump when this menu changes
+MENU_VER="01.159.20260723091112"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -445,17 +445,24 @@ printf '\033[2J\033[H'
 # menu even shows. Actions that need root call sudo themselves (and sudo then
 # caches the credential for a few minutes).
 # Cold-boot race: this menu auto-launches on console login, which can beat
-# the AP/DHCP interface coming up by a few seconds -- without this, the
-# first paint shows a stale/empty IP until the next keypress or the 60s
-# idle refresh below. Wait briefly (max ~8s) so the first render is already
-# correct.
-for _ in $(seq 1 16); do [ -n "$(IP)" ] && break; sleep 0.5; done
+# the AP/DHCP interface coming up -- sometimes by a LOT more than a few
+# seconds (AP startup + NetworkManager + DHCP after a reset/reboot). A fixed
+# upfront wait either blocks the menu from showing at all, or isn't long
+# enough and the user still sees a stale/empty IP until they touch a key.
+# Instead: show the menu immediately, and while there's no IP yet, poll fast
+# (1s) for the first ~45s so it self-corrects on its own almost the moment
+# the interface comes up -- no blocking, no keypress needed.
+BOOT_TS="$(date +%s 2>/dev/null || echo 0)"
 while true; do
     render
-    # -t 60: wake on its own every minute (even with no keypress) so the
-    # CPU/mem/disk stats line actually refreshes while the menu sits idle,
-    # not just when the user happens to press a key.
-    if ! IFS= read -rsn1 -t 60 k; then continue; fi
+    to=60
+    if [ -z "$(IP)" ] && [ $(( $(date +%s 2>/dev/null || echo 0) - BOOT_TS )) -lt 45 ]; then
+        to=1
+    fi
+    # -t 60 (or -t 1 during the cold-boot window above): wake on its own even
+    # with no keypress, so the header/stats line actually refreshes while
+    # the menu sits idle, not just when the user happens to press a key.
+    if ! IFS= read -rsn1 -t "$to" k; then continue; fi
     if [ "$k" = $'\e' ]; then IFS= read -rsn2 -t 0.05 rest; k="$k$rest"; fi
     case "$k" in
         $'\e[A'|$'\eOA') SEL=$(( (SEL - 1 + NUM) % NUM )); continue ;;
