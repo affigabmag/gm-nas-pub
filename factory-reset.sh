@@ -54,20 +54,26 @@ log "removing Tailscale"
 command -v tailscale >/dev/null 2>&1 && tailscale logout 2>/dev/null || true
 systemctl stop tailscaled 2>/dev/null || true
 systemctl disable tailscaled 2>/dev/null || true
-apt-get purge -y tailscale >/dev/null 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y \
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    </dev/null tailscale >/dev/null 2>&1 || true
 rm -rf /var/lib/tailscale /etc/default/tailscaled
 log "Tailscale removed"
 
 log "removing Cockpit"
 systemctl stop cockpit.socket cockpit.service 2>/dev/null || true
-apt-get purge -y 'cockpit*' >/dev/null 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y \
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    </dev/null 'cockpit*' >/dev/null 2>&1 || true
 log "Cockpit removed"
 
 log "removing Syncthing"
 for u in $(systemctl list-unit-files 'syncthing@*.service' --no-legend 2>/dev/null | awk '{print $1}'); do
     systemctl disable --now "$u" 2>/dev/null || true
 done
-apt-get purge -y syncthing >/dev/null 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y \
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    </dev/null syncthing >/dev/null 2>&1 || true
 log "Syncthing removed"
 
 # --- Reset shares: drop our managed block from smb.conf, clear the list -----
