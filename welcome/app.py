@@ -23,6 +23,7 @@ import json
 import ctypes
 import base64
 import shutil
+import threading
 import subprocess
 from html import escape
 from flask import Flask, request, redirect, render_template_string, jsonify
@@ -1844,5 +1845,40 @@ def delete_share():
     return redirect(f"/?msg=Share '{escape(name)}' removed (files kept).")
 
 
+TLS_DIR = "/etc/gmnas/tls"
+TLS_CERT = f"{TLS_DIR}/cert.pem"
+TLS_KEY = f"{TLS_DIR}/key.pem"
+
+
+def ensure_tls_cert():
+    """Self-signed, generated once and reused -- this unlocks Android/Chrome's
+    native "Install app" prompt, which requires a secure context (HTTPS) and
+    flatly refuses to fire over plain HTTP for anything but localhost. Yes,
+    this means a "connection is not private" click-through once per browser
+    -- an accepted, deliberate tradeoff to get the install prompt working."""
+    if os.path.isfile(TLS_CERT) and os.path.isfile(TLS_KEY):
+        return
+    os.makedirs(TLS_DIR, exist_ok=True)
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-days", "3650", "-keyout", TLS_KEY, "-out", TLS_CERT, "-subj", "/CN=gm-nas",
+    ], capture_output=True)
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    ensure_tls_cert()
+    # Plain :80 still works (just bounces to :443) -- so typing a bare IP,
+    # an old bookmark, or a QR code printed with http:// all keep working
+    # instead of silently failing once the real app moved to HTTPS.
+    _redirector = Flask("gmnas-redirect")
+
+    @_redirector.route("/", defaults={"path": ""})
+    @_redirector.route("/<path:path>")
+    def _redirect_to_https(path):
+        return redirect(f"https://{request.host.split(':')[0]}/{path}", code=301)
+
+    threading.Thread(
+        target=lambda: _redirector.run(host="0.0.0.0", port=80),
+        daemon=True,
+    ).start()
+    app.run(host="0.0.0.0", port=443, ssl_context=(TLS_CERT, TLS_KEY))

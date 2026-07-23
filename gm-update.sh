@@ -54,6 +54,6 @@ systemctl restart gmnas-welcome.service ttyd.service 2>/dev/null || true
 
 H="$(hostname).local"
 echo "== done =="
-echo "  Welcome app : http://$H"
+echo "  Welcome app : https://$H"
 echo "  Cockpit     : https://$H:9090"
 echo "  Terminal    : http://$H:7681"

@@ -156,7 +156,7 @@ act_x() {
 }
 act_i() {
     local h; h="$(H).local"
-    echo "  Welcome   : http://$h"
+    echo "  Welcome   : https://$h"
     echo "  Cockpit   : https://$h:9090"
     echo "  Terminal  : http://$h:7681"
     echo "  Syncthing : http://$h:8384"
