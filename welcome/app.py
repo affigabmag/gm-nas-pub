@@ -235,6 +235,9 @@ PAGE = """<!doctype html>
    {% endif %}
   </div>
   {% if syncthing == 'ready' %}
+  <div id="stStatusLine" class="hint" style="margin-top:-4px;margin-bottom:8px"></div>
+  {% endif %}
+  {% if syncthing == 'ready' %}
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts.</p>
   <p id="stGuideHide" class="hint" style="display:none">
@@ -636,6 +639,29 @@ PAGE = """<!doctype html>
    }
  })();
  {% if syncthing == 'ready' %}
+ // Sync-status line (folder progress + connected devices) right on this
+ // page -- otherwise checking this meant opening Syncthing's own GUI.
+ // Polled every 60s: tiny JSON response either side, negligible load, and
+ // sync progress isn't the kind of thing that needs sub-minute freshness
+ // for a glance-at-it status line (unlike the pending-device dialog below,
+ // which reacts to a one-time user action and benefits from being quicker).
+ (function(){
+   var el = document.getElementById('stStatusLine');
+   if (!el) return;
+   function poll(){
+     fetch('/syncthing/status').then(function(r){ return r.json(); }).then(function(s){
+       var parts = [];
+       if (s.folder) {
+         parts.push(s.folder.state === 'idle' && s.folder.percent >= 100
+           ? 'Up to date' : (s.folder.state || 'syncing') + ' ' + s.folder.percent + '%');
+       }
+       parts.push(s.connected + '/' + s.total + ' device' + (s.total === 1 ? '' : 's') + ' connected');
+       el.textContent = parts.join(' · ');
+     }).catch(function(){});
+   }
+   poll();
+   setInterval(poll, 60000);
+ })();
  // Poll for pending (unpaired) Syncthing devices AND pending folder offers
  // -- the same "wants to connect" / "wants to share folder" notifications
  // the Syncthing GUI itself shows, but surfaced here so approving either
@@ -1304,6 +1330,31 @@ def syncthing_pending_folder_ignore():
             ignored.append({"id": folder_id, "label": label})
     r = syncthing_api("PUT", "/rest/config", user, body=config)
     return jsonify(ok=r is not None)
+
+
+@app.route("/syncthing/status")
+def syncthing_status():
+    """Lightweight folder-sync + device-connection summary for the dashboard
+    -- so sync progress is visible right on this page instead of needing to
+    open Syncthing's own GUI to check. Tiny JSON responses, polled
+    infrequently client-side; negligible load either side."""
+    if syncthing_state() != "ready":
+        return jsonify(folder=None, connected=0, total=0)
+    user = admin_username()
+    db = syncthing_api("GET", "/rest/db/status?folder=syncthing", user)
+    conns = syncthing_api("GET", "/rest/system/connections", user)
+    folder = None
+    if db is not None:
+        global_bytes = db.get("globalBytes", 0) or 0
+        need_bytes = db.get("needBytes", 0) or 0
+        pct = round((global_bytes - need_bytes) / global_bytes * 100) if global_bytes else 100
+        folder = {"state": db.get("state", ""), "percent": max(0, min(100, pct))}
+    connected = total = 0
+    if conns is not None:
+        devices = (conns.get("connections") or {})
+        total = len(devices)
+        connected = sum(1 for d in devices.values() if d.get("connected"))
+    return jsonify(folder=folder, connected=connected, total=total)
 
 
 @app.route("/syncthing/reconnect", methods=["POST"])
