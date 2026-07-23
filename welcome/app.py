@@ -992,6 +992,11 @@ def syncthing_cmd(user):
         "f = r.find('folder')\n"
         "if f is not None:\n"
         f"    f.set('path', '{STORAGE}/syncthing')\n"
+        "o = r.find('options')\n"
+        "if o is not None:\n"
+        "    ur = o.find('urAccepted')\n"
+        "    if ur is None: ur = ET.SubElement(o, 'urAccepted')\n"
+        "    ur.text = '-1'\n"   # -1 = declined; also suppresses the "Allow Usage Reporting?" prompt for good
         "t.write(p)\n"
     )
     # patch_py is embedded in a DOUBLE-quoted shell string below -- the bcrypt
