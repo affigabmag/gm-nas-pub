@@ -345,6 +345,18 @@ PAGE = """<!doctype html>
  </div>
 </div>
 
+<div class="modal-bg" id="syncthingPendingModal">
+ <div class="modal">
+  <h3>New Syncthing device</h3>
+  <p>Device "<b id="stpName"></b>" (<code id="stpId" style="font-size:11px;word-break:break-all"></code>) wants to connect.</p>
+  <p>Add it, and share the <b>syncthing</b> folder with it?</p>
+  <div class="modal-actions">
+   <button type="button" id="stpIgnore" class="btn-cancel">Ignore</button>
+   <button type="button" id="stpAccept">Add device</button>
+  </div>
+ </div>
+</div>
+
 <div class="modal-bg" id="factoryResetModal">
  <div class="modal">
   <h3>⚠️ Factory reset — Total wipe</h3>
@@ -433,6 +445,40 @@ PAGE = """<!doctype html>
      }
    });
  })();
+ {% if syncthing == 'ready' %}
+ // Poll for a pending (unpaired) Syncthing device -- the same "wants to
+ // connect" notification the Syncthing GUI itself shows, but surfaced
+ // here so approving it never requires a separate login.
+ (function(){
+   var modal = document.getElementById('syncthingPendingModal');
+   var nameEl = document.getElementById('stpName'), idEl = document.getElementById('stpId');
+   var acceptBtn = document.getElementById('stpAccept'), ignoreBtn = document.getElementById('stpIgnore');
+   var shown = null;
+   function poll(){
+     if (modal.classList.contains('open')) return;   // don't yank an open dialog mid-decision
+     fetch('/syncthing/pending').then(function(r){ return r.json(); }).then(function(pending){
+       var ids = Object.keys(pending || {});
+       if (!ids.length) return;
+       var id = ids[0];
+       if (id === shown) return;   // already asked about this one this session (post ignore/accept)
+       nameEl.textContent = (pending[id] && pending[id].name) || id.slice(0, 7);
+       idEl.textContent = id;
+       modal.classList.add('open');
+     }).catch(function(){});
+   }
+   function respond(url){
+     var id = idEl.textContent;
+     shown = id;
+     modal.classList.remove('open');
+     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                 body: 'device_id=' + encodeURIComponent(id)}).catch(function(){});
+   }
+   acceptBtn.addEventListener('click', function(){ respond('/syncthing/pending/accept'); });
+   ignoreBtn.addEventListener('click', function(){ respond('/syncthing/pending/ignore'); });
+   poll();
+   setInterval(poll, 5000);
+ })();
+ {% endif %}
  // Install-progress refresh — reload every 5s to update app badges, but ONLY
  // while no text field is focused, so typing is never interrupted/wiped.
  {% if busy %}
@@ -440,8 +486,9 @@ PAGE = """<!doctype html>
    var a = document.activeElement, t = a ? a.tagName : '';
    var frOpen = document.getElementById('factoryResetModal');
    var mOpen = document.getElementById('manageModal');
+   var stpOpen = document.getElementById('syncthingPendingModal');
    function isOpen(el){ return el && el.classList.contains('open'); }
-   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(frOpen) && !isOpen(mOpen))
+   if (t !== 'INPUT' && t !== 'TEXTAREA' && !isOpen(frOpen) && !isOpen(mOpen) && !isOpen(stpOpen))
      location.reload();
  }, 5000);
  {% endif %}
@@ -876,6 +923,92 @@ def syncthing_qr():
     except Exception:
         return app.response_class("", status=404, headers=NOCACHE)
     return app.response_class(r.stdout, mimetype="image/png", headers=NOCACHE)
+
+
+def syncthing_api_key(user):
+    """Syncthing auto-generates an API key into its own config.xml -- reuse
+    it to talk to its REST API directly, instead of requiring a separate
+    GUI login just to approve a pending device pairing request."""
+    conf = f"/home/{user}/.local/state/syncthing/config.xml"
+    try:
+        import xml.etree.ElementTree as ET
+        t = ET.parse(conf)
+        g = t.getroot().find("gui")
+        k = g.find("apikey") if g is not None else None
+        return k.text.strip() if k is not None and k.text else ""
+    except Exception:
+        return ""
+
+
+def syncthing_api(method, path, user, body=None):
+    """Minimal REST call to the box's OWN Syncthing (localhost only, never
+    exposed elsewhere) using its API key. Returns parsed JSON, or None on
+    any failure -- callers treat that as "nothing to show" rather than an
+    error, since this is best-effort UI convenience, not critical path."""
+    import urllib.request
+    key = syncthing_api_key(user)
+    if not key:
+        return None
+    req = urllib.request.Request(
+        f"http://127.0.0.1:8384{path}", method=method,
+        headers={"X-API-Key": key, "Content-Type": "application/json"},
+        data=json.dumps(body).encode() if body is not None else None)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = r.read()
+            return json.loads(data) if data else {}
+    except Exception:
+        return None
+
+
+@app.route("/syncthing/pending")
+def syncthing_pending():
+    """Devices that have tried to connect but aren't paired yet -- normally
+    only visible as a banner inside the Syncthing GUI itself (requiring a
+    separate login just to see it). Surfaced here so the welcome page can
+    show the same "approve this device?" prompt directly."""
+    if syncthing_state() != "ready":
+        return jsonify({})
+    pending = syncthing_api("GET", "/rest/cluster/pending/devices", admin_username())
+    return jsonify(pending or {})
+
+
+@app.route("/syncthing/pending/accept", methods=["POST"])
+def syncthing_pending_accept():
+    user = admin_username()
+    device_id = request.form.get("device_id", "").strip()
+    name = request.form.get("name", "").strip() or device_id[:7]
+    if not device_id:
+        return jsonify(ok=False), 400
+    config = syncthing_api("GET", "/rest/config", user)
+    if config is None:
+        return jsonify(ok=False), 500
+    if not any(d.get("deviceID") == device_id for d in config.get("devices", [])):
+        config.setdefault("devices", []).append({"deviceID": device_id, "name": name})
+    # Share the (one) syncthing folder with the newly-added device automatically
+    # -- matches the guide's step 4, so accepting here does both at once.
+    for f in config.get("folders", []):
+        if not any(d.get("deviceID") == device_id for d in f.get("devices", [])):
+            f.setdefault("devices", []).append({"deviceID": device_id})
+    r = syncthing_api("PUT", "/rest/config", user, body=config)
+    return jsonify(ok=r is not None)
+
+
+@app.route("/syncthing/pending/ignore", methods=["POST"])
+def syncthing_pending_ignore():
+    user = admin_username()
+    device_id = request.form.get("device_id", "").strip()
+    if not device_id:
+        return jsonify(ok=False), 400
+    config = syncthing_api("GET", "/rest/config", user)
+    if config is None:
+        return jsonify(ok=False), 500
+    opts = config.setdefault("options", {})
+    ignored = opts.setdefault("ignoredDevices", [])
+    if not any(d.get("deviceID") == device_id for d in ignored):
+        ignored.append({"deviceID": device_id, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    r = syncthing_api("PUT", "/rest/config", user, body=config)
+    return jsonify(ok=r is not None)
 
 
 def tailscale_login_url():
