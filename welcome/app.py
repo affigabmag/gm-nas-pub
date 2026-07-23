@@ -225,7 +225,7 @@ PAGE = """<!doctype html>
    <li>On the phone, accept the folder share and pick where it should sync to.</li>
   </ol>
   <div style="text-align:center;margin:14px 0">
-   <img src="/syncthing/qr.png" alt="Syncthing Device ID QR code" width="180" height="180"
+   <img src="/syncthing/qr.png?t={{ qr_cache_bust }}" alt="Syncthing Device ID QR code" width="180" height="180"
         style="background:#fff;padding:8px;border-radius:8px"
         onerror="this.style.display='none'; document.getElementById('stQrFallback').style.display='block'">
    <p id="stQrFallback" class="hint" style="display:none">
@@ -400,10 +400,28 @@ PAGE = """<!doctype html>
        copyBtn.textContent = ok ? '✓ Copied' : 'Select & copy manually';
        setTimeout(function(){ copyBtn.textContent = '📋 Copy'; }, 2000);
      };
+     // navigator.clipboard requires a secure context (HTTPS/localhost) --
+     // this app is plain HTTP by design (no cert warnings for a LAN
+     // appliance), so that API is simply undefined here in most browsers.
+     // Fall back to the old textarea + execCommand('copy') trick, which
+     // has no such restriction.
+     function legacyCopy(){
+       var ta = document.createElement('textarea');
+       ta.value = text;
+       ta.style.position = 'fixed';
+       ta.style.opacity = '0';
+       document.body.appendChild(ta);
+       ta.focus();
+       ta.select();
+       var ok = false;
+       try { ok = document.execCommand('copy'); } catch (e) {}
+       document.body.removeChild(ta);
+       done(ok);
+     }
      if (navigator.clipboard && navigator.clipboard.writeText) {
-       navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ done(false); });
+       navigator.clipboard.writeText(text).then(function(){ done(true); }, legacyCopy);
      } else {
-       done(false);
+       legacyCopy();
      }
    });
  })();
@@ -831,20 +849,25 @@ def syncthing_device_id(user):
 def syncthing_qr():
     """QR code for the box's Syncthing Device ID -- rendered right on this
     page so pairing a phone never requires logging into the Syncthing GUI
-    at all. qrencode runs entirely offline (no external image service)."""
+    at all. qrencode runs entirely offline (no external image service).
+
+    no-store on EVERY response (not just success) -- a transient failure
+    on first load could otherwise get cached by the browser and keep
+    showing broken/missing until a hard refresh, even once it would
+    succeed on retry."""
+    NOCACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
     did = syncthing_device_id(admin_username())
     qrencode = shutil.which("qrencode")
     if not did or not qrencode:
-        return ("", 404)
+        return app.response_class("", status=404, headers=NOCACHE)
     try:
         r = subprocess.run([qrencode, "-o", "-", "-t", "PNG", "-s", "6", did],
                            capture_output=True, timeout=10)
         if r.returncode != 0 or not r.stdout:
-            return ("", 404)
+            return app.response_class("", status=404, headers=NOCACHE)
     except Exception:
-        return ("", 404)
-    return app.response_class(r.stdout, mimetype="image/png",
-                              headers={"Cache-Control": "no-store"})
+        return app.response_class("", status=404, headers=NOCACHE)
+    return app.response_class(r.stdout, mimetype="image/png", headers=NOCACHE)
 
 
 def tailscale_login_url():
@@ -1123,6 +1146,7 @@ def index():
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale, syncthing=syncthing,
         syncthing_device_id=(syncthing_device_id(admin_username()) if syncthing == "ready" else ""),
+        qr_cache_bust=int(time.time()),
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
         busy=busy, version=seed_version(), appver=WELCOME_VER, build=build_version(),
         online=have_internet(), ip=box_ip(),
