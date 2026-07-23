@@ -34,7 +34,14 @@ DEFAULT_HOSTNAME=my-gmnas
 
 log "=============== factory-reset start ==============="
 log "stopping welcome app"
-systemctl stop gmnas-welcome.service 2>/dev/null || true
+# NOT actually stopped here anymore: this service is what serves the live
+# progress page (/factory-reset/log) the browser is polling right now --
+# killing it this early (confirmed live) instantly breaks that polling, so
+# the whole checklist just freezes at 0% even though the reset itself keeps
+# running fine in the background via systemd-run. It's already gated by
+# ConditionPathExists=/etc/homenas/provisioned in its own unit file, and
+# that flag gets removed below, then the reboot at the very end kills it
+# anyway -- there was never a real need to stop it manually mid-script.
 
 # --- Remove the wizard-created admin account (never the built-in 'gmnas') --
 if [ -f "$ADMIN_USER_FILE" ]; then

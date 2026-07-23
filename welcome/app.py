@@ -347,6 +347,12 @@ PAGE = """<!doctype html>
  // Auto-dismiss the flash message (account created, share added, etc) after
  // 5s instead of leaving it on screen forever.
  (function(){
+   // The message comes from a ?msg=... URL param. The install-progress
+   // auto-refresh below just does location.reload(), which reloads that
+   // SAME url -- so without this, the message faded out only to come right
+   // back on the next 5s refresh, over and over. Strip it from the address
+   // bar immediately so later reloads come back clean and it shows once.
+   if (location.search) history.replaceState(null, '', location.pathname);
    var m = document.getElementById('msgCard');
    if (!m) return;
    setTimeout(function(){
