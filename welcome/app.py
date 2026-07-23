@@ -218,12 +218,28 @@ PAGE = """<!doctype html>
   <p class="hint">Keeps a folder on your gm-nas ({{ storage }}/syncthing) in sync with your phone,
    directly over your home network — no cloud, no accounts.</p>
   <div id="stGuideWrap">
-   <ul class="hint" style="list-style:none;margin:6px 0 0;padding-left:0;line-height:1.9">
-    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">1.</b><input type="checkbox" class="stStep" data-i="0" style="flex:none"><span>Install the app on your phone (links below).</span></label></li>
-    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">2.</b><input type="checkbox" class="stStep" data-i="1" disabled style="flex:none"><span>In the phone app, add a device: scan the QR code below, or copy/paste the Device ID next to it. This sends a pairing request to the box.</span></label></li>
-    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">3.</b><input type="checkbox" class="stStep" data-i="2" disabled style="flex:none"><span>Accept the "New device" popup above — the <b>syncthing</b> folder is shared with it automatically.</span></label></li>
-    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">4.</b><input type="checkbox" class="stStep" data-i="3" disabled style="flex:none"><span>On the phone, accept the folder share and pick where it should sync to.</span></label></li>
-   </ul>
+   <table class="hint" style="width:100%;border-collapse:collapse;margin:6px 0 0">
+    <tr>
+     <td style="width:32px;padding:6px 4px;vertical-align:top"><input type="checkbox" class="stStep" data-i="0"></td>
+     <td style="width:20px;padding:6px 4px;vertical-align:top;font-weight:600;color:var(--fg)">1.</td>
+     <td style="padding:6px 4px;vertical-align:top">Install the app on your phone (links below).</td>
+    </tr>
+    <tr>
+     <td style="width:32px;padding:6px 4px;vertical-align:top"><input type="checkbox" class="stStep" data-i="1" disabled></td>
+     <td style="width:20px;padding:6px 4px;vertical-align:top;font-weight:600;color:var(--fg)">2.</td>
+     <td style="padding:6px 4px;vertical-align:top">In the phone app, add a device: scan the QR code below, or copy/paste the Device ID next to it. This sends a pairing request to the box.</td>
+    </tr>
+    <tr>
+     <td style="width:32px;padding:6px 4px;vertical-align:top"><input type="checkbox" class="stStep" data-i="2" disabled></td>
+     <td style="width:20px;padding:6px 4px;vertical-align:top;font-weight:600;color:var(--fg)">3.</td>
+     <td style="padding:6px 4px;vertical-align:top">Accept the "New device" popup above — the <b>syncthing</b> folder is shared with it automatically.</td>
+    </tr>
+    <tr>
+     <td style="width:32px;padding:6px 4px;vertical-align:top"><input type="checkbox" class="stStep" data-i="3" disabled></td>
+     <td style="width:20px;padding:6px 4px;vertical-align:top;font-weight:600;color:var(--fg)">4.</td>
+     <td style="padding:6px 4px;vertical-align:top">On the phone, accept the folder share and pick where it should sync to.</td>
+    </tr>
+   </table>
   </div>
   <p id="stGuideDone" class="hint" style="display:none">
    ✓ Setup steps complete. <a href="#" id="stGuideReopen" style="color:var(--accent)">Show steps again</a></p>
