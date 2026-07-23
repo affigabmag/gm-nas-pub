@@ -262,47 +262,47 @@ PAGE = """<!doctype html>
      <td style="padding:6px 4px;vertical-align:top">On the phone, accept the folder share and pick where it should sync to.</td>
     </tr>
    </table>
+   <div style="text-align:center;margin:14px 0">
+    <img src="/syncthing/qr.png?t={{ qr_cache_bust }}" alt="Syncthing Device ID QR code" width="180" height="180"
+         style="background:#fff;padding:8px;border-radius:8px"
+         onerror="this.style.display='none'; document.getElementById('stQrFallback').style.display='block'">
+    <p id="stQrFallback" class="hint" style="display:none">
+     QR code not available yet — open <b>Syncthing</b> above and use <b>Actions → Show QR code</b> instead.</p>
+    {% if syncthing_device_id %}
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px">
+     <code id="stDeviceId" style="font-size:11px;color:var(--muted);word-break:break-all;max-width:280px">{{ syncthing_device_id }}</code>
+     <button type="button" id="stCopyBtn" title="Copy Device ID" aria-label="Copy Device ID"
+        style="width:auto;padding:6px;font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+       <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+     </button>
+    </div>
+    {% endif %}
+   </div>
+   <div class="links" style="align-items:center;gap:14px">
+    <div>
+     <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
+        style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+       <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+            alt="Get Syncthing-Fork on Google Play" height="52" style="max-width:100%"></a>
+     <p class="hint" style="text-align:center;margin-top:4px">Android: <b>Syncthing-Fork</b></p>
+    </div>
+    <div>
+     <a href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank"
+        style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+       <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
+            alt="Get SyncTrain on the App Store" height="40" style="max-width:100%"></a>
+     <p class="hint" style="text-align:center;margin-top:4px">iPhone: <b>SyncTrain</b></p>
+    </div>
+   </div>
+   <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (SyncTrain)
+    occasionally to let it sync. Android's version can run continuously in the background.</p>
   </div>
   <p id="stGuideDone" class="hint" style="display:none">
    ✓ Setup steps complete. <a href="#" id="stGuideReopen" style="color:var(--accent)">Show steps again</a></p>
-  <div style="text-align:center;margin:14px 0">
-   <img src="/syncthing/qr.png?t={{ qr_cache_bust }}" alt="Syncthing Device ID QR code" width="180" height="180"
-        style="background:#fff;padding:8px;border-radius:8px"
-        onerror="this.style.display='none'; document.getElementById('stQrFallback').style.display='block'">
-   <p id="stQrFallback" class="hint" style="display:none">
-    QR code not available yet — open <b>Syncthing</b> above and use <b>Actions → Show QR code</b> instead.</p>
-   {% if syncthing_device_id %}
-   <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px">
-    <code id="stDeviceId" style="font-size:11px;color:var(--muted);word-break:break-all;max-width:280px">{{ syncthing_device_id }}</code>
-    <button type="button" id="stCopyBtn" title="Copy Device ID" aria-label="Copy Device ID"
-       style="width:auto;padding:6px;font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center">
-     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-      <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-     </svg>
-    </button>
-   </div>
-   {% endif %}
-  </div>
-  <div class="links" style="align-items:center;gap:14px">
-   <div>
-    <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
-       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
-      <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
-           alt="Get Syncthing-Fork on Google Play" height="52" style="max-width:100%"></a>
-    <p class="hint" style="text-align:center;margin-top:4px">Android: <b>Syncthing-Fork</b></p>
-   </div>
-   <div>
-    <a href="https://apps.apple.com/us/app/synctrain/id6553985316" target="_blank"
-       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
-      <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
-           alt="Get SyncTrain on the App Store" height="40" style="max-width:100%"></a>
-    <p class="hint" style="text-align:center;margin-top:4px">iPhone: <b>SyncTrain</b></p>
-   </div>
-  </div>
-  <p class="hint">iPhone note: Apple doesn't allow true background sync — open the app (SyncTrain)
-   occasionally to let it sync. Android's version can run continuously in the background.</p>
   {% endif %}
   {% if busy %}<p class="hint">Installing… this page refreshes automatically.</p>{% endif %}
   <div class="app">
@@ -540,11 +540,26 @@ PAGE = """<!doctype html>
    var KEY = 'gmnasSyncthingGuideChecked';
    var EXP_KEY = 'gmnasSyncthingGuideExpanded';
    var wasAllDone = null;   // null = not yet evaluated once (avoid a false "just completed" on load)
+   var expandedState = true;
+   // Progress is shared server-side now (not just localStorage) -- confirmed
+   // live: completing the guide in one browser didn't show as complete in
+   // a different browser/device hitting the same box. localStorage stays as
+   // an instant local cache (no flash of wrong state before the server
+   // reply lands); the server copy is the source of truth across browsers.
+   function syncServer(){
+     var payload = {checked: boxes.map(function(b){ return b.checked; }), expanded: expandedState};
+     fetch('/syncthing/guide-state', {
+       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+     }).catch(function(){});
+   }
    function save(){
      try { localStorage.setItem(KEY, JSON.stringify(boxes.map(function(b){ return b.checked; }))); } catch(e){}
+     syncServer();
    }
    function setExpanded(v){
+     expandedState = v;
      try { localStorage.setItem(EXP_KEY, v ? '1' : '0'); } catch(e){}
+     syncServer();
    }
    function refresh(){
      var checked = boxes.map(function(b){ return b.checked; });
@@ -553,10 +568,7 @@ PAGE = """<!doctype html>
      // already complete before) -- force it collapsed, per spec.
      if (allDone && wasAllDone === false) setExpanded(false);
      wasAllDone = allDone;
-     var expanded = true;
-     if (allDone) {
-       try { expanded = localStorage.getItem(EXP_KEY) === '1'; } catch(e) { expanded = false; }
-     }
+     var expanded = allDone ? expandedState : true;
      wrap.style.display = (!allDone || expanded) ? 'block' : 'none';
      done.style.display = (allDone && !expanded) ? 'block' : 'none';
      hideRow.style.display = (allDone && expanded) ? 'block' : 'none';
@@ -565,12 +577,30 @@ PAGE = """<!doctype html>
    }
    var saved = [];
    try { saved = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){}
-   boxes.forEach(function(b, i){
-     b.checked = !!saved[i];
-     b.disabled = i > 0 && !boxes[i - 1].checked;
-   });
-   wasAllDone = boxes.every(function(b){ return b.checked; });   // seed from saved state, not a fresh completion
+   try { expandedState = localStorage.getItem(EXP_KEY) === '1'; } catch(e) { expandedState = false; }
+   function applyChecked(arr){
+     boxes.forEach(function(b, i){
+       b.checked = !!arr[i];
+       b.disabled = i > 0 && !boxes[i - 1].checked;
+     });
+     wasAllDone = boxes.every(function(b){ return b.checked; });   // seed from saved state, not a fresh completion
+   }
+   applyChecked(saved);
    refresh();
+   // Local cache painted instantly above; now check the server (source of
+   // truth across browsers) and reapply if it disagrees -- e.g. another
+   // browser/device already finished the guide on this same box.
+   fetch('/syncthing/guide-state').then(function(r){ return r.json(); }).then(function(s){
+     if (s && Array.isArray(s.checked) && s.checked.length) {
+       try { localStorage.setItem(KEY, JSON.stringify(s.checked)); } catch(e){}
+       applyChecked(s.checked);
+     }
+     if (s && typeof s.expanded === 'boolean') {
+       expandedState = s.expanded;
+       try { localStorage.setItem(EXP_KEY, s.expanded ? '1' : '0'); } catch(e){}
+     }
+     refresh();
+   }).catch(function(){});
    boxes.forEach(function(b, i){
      b.addEventListener('change', function(){
        if (b.checked) {
@@ -593,7 +623,10 @@ PAGE = """<!doctype html>
        fetch('/syncthing/reconnect', {method: 'POST'}).then(function(r){ return r.json(); }).then(function(res){
          if (res && res.ok) {
            try { localStorage.removeItem(KEY); localStorage.removeItem(EXP_KEY); } catch(e){}
-           location.reload();
+           fetch('/syncthing/guide-state', {
+             method: 'POST', headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({checked: [], expanded: true})
+           }).finally(function(){ location.reload(); });
          } else {
            reconnectBtn.disabled = false;
            alert('Could not reset Syncthing pairings -- try again.');
@@ -1150,6 +1183,38 @@ def syncthing_api(method, path, user, body=None):
             return json.loads(data) if data else {}
     except Exception:
         return None
+
+
+SYNCTHING_GUIDE_STATE_FILE = "/etc/homenas/syncthing-guide-state.json"
+
+
+@app.route("/syncthing/guide-state")
+def syncthing_guide_state_get():
+    """Pairing-guide checklist progress, shared across every browser hitting
+    this box -- was localStorage-only before, so one browser completing the
+    guide didn't show as complete in any other browser/device checking the
+    same box's page."""
+    try:
+        with open(SYNCTHING_GUIDE_STATE_FILE) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify(checked=[], expanded=True)
+
+
+@app.route("/syncthing/guide-state", methods=["POST"])
+def syncthing_guide_state_set():
+    data = request.get_json(silent=True) or {}
+    state = {
+        "checked": [bool(x) for x in data.get("checked", [])][:8],
+        "expanded": bool(data.get("expanded", True)),
+    }
+    try:
+        os.makedirs(os.path.dirname(SYNCTHING_GUIDE_STATE_FILE), exist_ok=True)
+        with open(SYNCTHING_GUIDE_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except OSError:
+        return jsonify(ok=False), 500
+    return jsonify(ok=True)
 
 
 @app.route("/syncthing/pending")
