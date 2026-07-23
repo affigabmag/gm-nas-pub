@@ -233,8 +233,14 @@ PAGE = """<!doctype html>
    {% if syncthing_device_id %}
    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px">
     <code id="stDeviceId" style="font-size:11px;color:var(--muted);word-break:break-all;max-width:280px">{{ syncthing_device_id }}</code>
-    <button type="button" id="stCopyBtn" title="Copy Device ID"
-       style="width:auto;padding:6px 10px;font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border);cursor:pointer">📋 Copy</button>
+    <button type="button" id="stCopyBtn" title="Copy Device ID" aria-label="Copy Device ID"
+       style="width:auto;padding:6px;font-size:12px;background:var(--card);color:var(--fg);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center">
+     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+     </svg>
+    </button>
    </div>
    {% endif %}
   </div>
@@ -394,11 +400,13 @@ PAGE = """<!doctype html>
  (function(){
    var copyBtn = document.getElementById('stCopyBtn');
    if (!copyBtn) return;
+   var origIcon = copyBtn.innerHTML;
    copyBtn.addEventListener('click', function(){
      var text = document.getElementById('stDeviceId').textContent;
      var done = function(ok){
-       copyBtn.textContent = ok ? '✓ Copied' : 'Select & copy manually';
-       setTimeout(function(){ copyBtn.textContent = '📋 Copy'; }, 2000);
+       copyBtn.title = ok ? 'Copied!' : 'Select & copy manually';
+       copyBtn.textContent = ok ? '✓' : '✕';
+       setTimeout(function(){ copyBtn.innerHTML = origIcon; copyBtn.title = 'Copy Device ID'; }, 1500);
      };
      // navigator.clipboard requires a secure context (HTTPS/localhost) --
      // this app is plain HTTP by design (no cert warnings for a LAN
