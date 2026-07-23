@@ -334,7 +334,8 @@ PAGE = """<!doctype html>
   <p style="color: var(--text-danger)"><b>This cannot be undone without reflashing the OS.</b></p>
   <form method="post" action="/factory-reset">
    <label>Confirm your password</label>
-   <input type="password" name="password" autocomplete="current-password" required>
+   <div class="pass-wrap"><input type="password" name="password" class="pw" autocomplete="current-password" required>
+    <button type="button" class="eye" aria-label="Show password">👁</button></div>
    <div class="modal-actions">
     <button type="button" class="btn-cancel" id="factoryResetCancel">Cancel</button>
     <button type="submit" class="danger-btn">Factory reset &amp; reboot</button>
