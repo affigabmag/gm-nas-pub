@@ -91,6 +91,14 @@ wifi_profiles() {
 BEFORE="$(wifi_profiles)"
 log "existing wifi profiles before portal: [$(echo "$BEFORE" | tr '\n' ',')]"
 
+# Write this box's own unique ID as a static file in wifi-connect's UI dir --
+# wifi-connect only serves static files (no backend of its own), so the
+# captive portal page reads THIS to know its own identity, then only
+# accepts a scan match whose /gmnas-id response equals it. Without this,
+# a second gm-nas box already on the LAN answers the same generic marker
+# and the scan can match the wrong one -- confirmed live with two boxes.
+cat /etc/machine-id > "$UI_DIR/my-id.txt" 2>/dev/null || true
+
 log "launching wifi-connect (AP '$PORTAL_SSID', portal on :80, interface $WIFI_DEV)..."
 # --portal-interface is REQUIRED on some USB WiFi adapters: wifi-connect's
 # own device auto-detection reads the NetworkManager D-Bus device-type enum,

@@ -1681,6 +1681,27 @@ def gmnas_id():
                                        "Cache-Control": "no-store"})
 
 
+def machine_id():
+    """Genuinely unique per install (systemd generates it at first boot) --
+    reused as-is rather than inventing a new ID, so the setup portal can
+    tell ITS OWN box apart from any other gm-nas already on the same LAN.
+    Confirmed live: with two gm-nas boxes on one network, the old marker
+    (identical 1x1 PNG on every box) let the scan match whichever one
+    happened to answer first, not necessarily the one just being set up."""
+    try:
+        with open("/etc/machine-id") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+@app.route("/gmnas-id")
+def gmnas_id_text():
+    return app.response_class(machine_id(), mimetype="text/plain",
+                              headers={"Access-Control-Allow-Origin": "*",
+                                       "Cache-Control": "no-store"})
+
+
 # --- PWA install (Add to Home Screen / desktop shortcut) --------------------
 # SVG icon reused as-is from the page header logo -- modern browsers accept
 # image/svg+xml directly in a manifest, so no PNG generation/dependency is
@@ -1871,6 +1892,20 @@ if __name__ == "__main__":
     # an old bookmark, or a QR code printed with http:// all keep working
     # instead of silently failing once the real app moved to HTTPS.
     _redirector = Flask("gmnas-redirect")
+
+    # These two stay on plain HTTP deliberately, ahead of the catch-all
+    # redirect below: the setup portal's LAN discovery scan image-probes
+    # many candidate IPs at once, and a self-signed HTTPS cert those
+    # browsers have never seen would just fail silently (no click-through
+    # is possible for a background probe) -- breaking discovery entirely
+    # for every box, not just when two are on the same LAN.
+    @_redirector.route("/gmnas-id.png")
+    def _redirector_marker():
+        return gmnas_id()
+
+    @_redirector.route("/gmnas-id")
+    def _redirector_marker_text():
+        return gmnas_id_text()
 
     @_redirector.route("/", defaults={"path": ""})
     @_redirector.route("/<path:path>")

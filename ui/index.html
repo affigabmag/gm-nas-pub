@@ -154,10 +154,21 @@
 
       <div id="msg" class="msg"></div>
     </div>
-    <div class="ver">gm-nas setup &bull; v01.190.20260723123637</div>
+    <div class="ver">gm-nas setup &bull; v01.191.20260723125335</div>
   </div>
 
   <script>
+    // This box's own unique ID (systemd's /etc/machine-id, written as a
+    // static file since wifi-connect only serves static files, no backend
+    // of its own). Loaded once up front so the LAN scan can tell THIS box
+    // apart from any other gm-nas already on the same network -- without
+    // it, the generic /gmnas-id.png marker matches whichever box answers
+    // first, not necessarily the one actually being set up right now.
+    var GMNAS_MY_ID = null;
+    fetch('/my-id.txt', {cache: 'no-store'}).then(function(r){ return r.ok ? r.text() : ''; })
+      .then(function(t){ GMNAS_MY_ID = (t || '').trim(); })
+      .catch(function(){ GMNAS_MY_ID = ''; });
+
     var ssidSel   = document.getElementById('ssid');
     var manualWrap= document.getElementById('manualWrap');
     var manualSsid= document.getElementById('manualSsid');
@@ -270,7 +281,22 @@
             log('probing ' + ip);
             var img = new Image();
             var to = setTimeout(function () { img.onload = img.onerror = null; img.src = ''; next(); }, 1500);
-            img.onload = function () { clearTimeout(to); report(ip); };
+            img.onload = function () {
+              clearTimeout(to);
+              // A gm-nas answered, but it might be a DIFFERENT one already
+              // on this LAN -- confirm it's actually THIS box before
+              // treating it as a match. If GMNAS_MY_ID never loaded (e.g.
+              // fetch failed for some reason), fall back to the old
+              // marker-only behavior rather than getting stuck forever.
+              if (GMNAS_MY_ID === null || GMNAS_MY_ID === '') { report(ip); return; }
+              fetch('http://' + ip + '/gmnas-id?_=' + Math.random(), {cache: 'no-store'})
+                .then(function (r) { return r.ok ? r.text() : ''; })
+                .then(function (text) {
+                  if ((text || '').trim() === GMNAS_MY_ID) { report(ip); }
+                  else { log('  matched a gm-nas at ' + ip + ' but it is a DIFFERENT box -- skipping'); next(); }
+                })
+                .catch(function () { next(); });
+            };
             img.onerror = function () { clearTimeout(to); next(); };
             img.src = 'http://' + ip + '/gmnas-id.png?_=' + Math.random();
           }
