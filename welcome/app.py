@@ -220,7 +220,7 @@ PAGE = """<!doctype html>
   <div id="stGuideWrap">
    <ul class="hint" style="list-style:none;margin:6px 0 0;padding-left:0;line-height:1.9">
     <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">1.</b><input type="checkbox" class="stStep" data-i="0" style="flex:none"><span>Install the app on your phone (links below).</span></label></li>
-    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">2.</b><input type="checkbox" class="stStep" data-i="1" disabled style="flex:none"><span>In the phone app, add a device and scan the QR code below, or copy/paste the Device ID next to it.</span></label></li>
+    <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">2.</b><input type="checkbox" class="stStep" data-i="1" disabled style="flex:none"><span>In the phone app, add a device: scan the QR code below, or copy/paste the Device ID next to it. This sends a pairing request to the box.</span></label></li>
     <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">3.</b><input type="checkbox" class="stStep" data-i="2" disabled style="flex:none"><span>Accept the "New device" popup above — the <b>syncthing</b> folder is shared with it automatically.</span></label></li>
     <li><label style="cursor:pointer;display:flex;align-items:center;gap:8px"><b style="flex:none;min-width:14px">4.</b><input type="checkbox" class="stStep" data-i="3" disabled style="flex:none"><span>On the phone, accept the folder share and pick where it should sync to.</span></label></li>
    </ul>
