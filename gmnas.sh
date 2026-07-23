@@ -267,6 +267,17 @@ dispatch_action() {
         f|F) btop ;;
         z|Z) run_boxed "Benchmark" run_helper gm-benchmark ;;
         g|G) echo "Scanning for WiFi networks..."
+           # Must work no matter what state the box is in -- including mid
+           # setup-AP (homenas-firstboot.service + wifi-connect actively
+           # holding the WiFi device for the GMNas-Setup portal). Without
+           # tearing those down first, a scan/connect attempt collides with
+           # their own activation and nmcli reports things like "New
+           # connection activation was enqueued" -- confirmed live. Stop
+           # them unconditionally (no-ops if they weren't running) before
+           # doing anything else.
+           sudo systemctl stop homenas-firstboot.service >/dev/null 2>&1
+           sudo pkill -f wifi-connect >/dev/null 2>&1
+           sleep 1
            sudo nmcli dev wifi rescan >/dev/null 2>&1; sleep 2
            local ssids=() n s sel
            mapfile -t ssids < <(nmcli -t -f SSID,SIGNAL dev wifi list 2>/dev/null \

@@ -30,6 +30,15 @@ echo "$(date '+%F %T') ===== join-wifi start (SSID=$SSID) ====="
 #        available yet.
 if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
     echo "== NetworkManager present -- joining via nmcli =="
+    # Must work regardless of current box state, including mid setup-AP
+    # (homenas-firstboot.service + wifi-connect holding the WiFi device for
+    # the GMNas-Setup portal). Without stopping those first, our own
+    # activation collides with theirs -- nmcli reports things like "New
+    # connection activation was enqueued", unrelated to the real SSID/pass.
+    # No-ops if neither was running.
+    systemctl stop homenas-firstboot.service >/dev/null 2>&1
+    pkill -f wifi-connect >/dev/null 2>&1
+    sleep 1
     DEV="$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
     # If DEV was already associated to this SSID from a previous attempt, its
     # old IP/lease can still be sitting on the interface for a few seconds
