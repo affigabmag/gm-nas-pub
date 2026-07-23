@@ -67,10 +67,11 @@ echo "-- sudo: don't re-prompt for a password every few minutes at the console -
 # menu shells out to sudo for lots of small actions, that means repeated
 # password prompts corrupting the dialog boxes (see run_boxed's own sudo -v
 # workaround) during one sitting. Once logged in at the console, treat that
-# login as sufficient for the rest of the session: cache sudo indefinitely
-# and share the cache across ttys/pty's the menu might invoke things from.
+# login as sufficient for a full hour (not indefinitely -- a fixed, bounded
+# window is preferred over "never expire"), and share the cache across
+# ttys/pty's the menu might invoke things from.
 cat > /etc/sudoers.d/90-gmnas-sudo-cache <<'EOF'
-Defaults:%sudo timestamp_timeout=-1
+Defaults:%sudo timestamp_timeout=60
 Defaults:%sudo !tty_tickets
 EOF
 chmod 440 /etc/sudoers.d/90-gmnas-sudo-cache
