@@ -31,21 +31,32 @@ echo "$(date '+%F %T') ===== join-wifi start (SSID=$SSID) ====="
 if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
     echo "== NetworkManager present -- joining via nmcli =="
     DEV="$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
+    # If DEV was already associated to this SSID from a previous attempt, its
+    # old IP/lease can still be sitting on the interface for a few seconds
+    # after we ask it to reconnect with a NEW (possibly wrong) password --
+    # checking "is there any IP" alone reads that stale lease as success.
+    # Disconnect first so a failed auth genuinely has no IP to show.
+    [ -n "$DEV" ] && nmcli device disconnect "$DEV" >/dev/null 2>&1
     nmcli connection delete "$SSID" 2>/dev/null || true
     nmcli connection add type wifi con-name "$SSID" ${DEV:+ifname "$DEV"} ssid "$SSID" \
         wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASS" \
         connection.autoconnect yes connection.autoconnect-priority 100 2>/dev/null \
         && echo "  connection '$SSID' created"
-    mkdir -p /etc/homenas; touch /etc/homenas/provisioned
-    nmcli connection up "$SSID" >/dev/null 2>&1
-    sleep 3
-    ip="$(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}' \
-        | xargs -I{} ip -4 -o addr show dev {} 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+    NEW_UUID="$(nmcli -t -f connection.uuid connection show "$SSID" 2>/dev/null | cut -d: -f2)"
+    up_err="$(nmcli connection up "$SSID" 2>&1)"; up_rc=$?
+    sleep 2
+    active_uuid="$(nmcli -t -f GENERAL.CONNECTION device show "$DEV" 2>/dev/null | cut -d: -f2)"
+    ip=""
+    [ "$up_rc" -eq 0 ] && [ -n "$NEW_UUID" ] && [ "$active_uuid" = "$NEW_UUID" ] \
+        && ip="$(ip -4 -o addr show dev "$DEV" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
     echo
     if [ -n "$ip" ]; then
         echo ">> Connected to '$SSID'. IP: $ip"
+        mkdir -p /etc/homenas; touch /etc/homenas/provisioned
     else
-        echo ">> No IP yet -- WiFi may still be associating, or the password is wrong."
+        echo ">> Failed to connect to '$SSID' -- wrong password, or out of range."
+        [ -n "$up_err" ] && echo "   nmcli: $up_err"
+        nmcli connection delete "$SSID" 2>/dev/null || true
         echo "   Re-run 'Connect to WiFi' from the menu to try again."
     fi
     exit 0

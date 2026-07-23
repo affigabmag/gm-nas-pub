@@ -959,9 +959,11 @@ FACTORY_RESET_LOG = "/var/log/gm-nas/factory-reset.log"
 # one existed) so the fraction is an approximation, not an exact per-line map.
 FACTORY_RESET_STEPS = [
     ("stopping welcome app", "Stopping the welcome app"),
+    ("Tailscale removed", "Removing Tailscale"),
+    ("Cockpit removed", "Removing Cockpit"),
+    ("Syncthing removed", "Removing Syncthing"),
     ("cleared shares.json", "Resetting shares + Samba config"),
-    ("erasing all user files", "Erasing files in storage"),
-    ("storage partition cleared", "Storage reset to factory state"),
+    ("storage partition reformatted", "Storage reset to factory state"),
     ("password-not-set flag restored", "Restoring first-time setup flow"),
     ("hostname reset", "Resetting hostname"),
     ("disconnecting WiFi", "Disconnecting WiFi"),

@@ -266,8 +266,27 @@ dispatch_action() {
         e|E) run_boxed "gm-nas logs" act_e ;;
         f|F) btop ;;
         z|Z) run_boxed "Benchmark" run_helper gm-benchmark ;;
-        g|G) read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
-           read -rsp "Password: " p; echo
+        g|G) echo "Scanning for WiFi networks..."
+           sudo nmcli dev wifi rescan >/dev/null 2>&1; sleep 2
+           local ssids=() n s sel
+           mapfile -t ssids < <(nmcli -t -f SSID,SIGNAL dev wifi list 2>/dev/null \
+               | awk -F: '$1!=""' | sort -t: -k2 -rn | awk -F: '!seen[$1]++{print $1}')
+           if [ "${#ssids[@]}" -eq 0 ]; then
+               echo "No networks found nearby."
+               read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
+           else
+               echo "Nearby WiFi networks:"
+               n=1
+               for s in "${ssids[@]}"; do printf "  %2d) %s\n" "$n" "$s"; n=$((n+1)); done
+               printf "  %2d) Enter manually\n" "$n"
+               read -rp "Select network [1-$n]: " sel
+               if [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le "${#ssids[@]}" ]; then
+                   s="${ssids[$((sel-1))]}"
+               else
+                   read -rp "WiFi name (SSID) [home]: " s; s="${s:-home}"
+               fi
+           fi
+           read -rsp "Password for '$s': " p; echo
            run_boxed "Connect to WiFi" run_helper join-wifi "$s" "$p"
            echo "A reboot is required to leave AP mode and connect to '$s'."
            echo "Reboot now? [y/N]"
@@ -425,6 +444,12 @@ printf '\033[2J\033[H'
 # NOTE: no upfront "sudo -v" here -- it would prompt for a password before the
 # menu even shows. Actions that need root call sudo themselves (and sudo then
 # caches the credential for a few minutes).
+# Cold-boot race: this menu auto-launches on console login, which can beat
+# the AP/DHCP interface coming up by a few seconds -- without this, the
+# first paint shows a stale/empty IP until the next keypress or the 60s
+# idle refresh below. Wait briefly (max ~8s) so the first render is already
+# correct.
+for _ in $(seq 1 16); do [ -n "$(IP)" ] && break; sleep 0.5; done
 while true; do
     render
     # -t 60: wake on its own every minute (even with no keypress) so the

@@ -47,6 +47,29 @@ if [ -f "$ADMIN_USER_FILE" ]; then
     rm -f "$ADMIN_USER_FILE"
 fi
 
+# --- Remove Tailscale / Cockpit / Syncthing -- a full reset means these come
+# back as fresh "Install" buttons in the welcome wizard, not left installed
+# and orphaned/disconnected. ---------------------------------------------
+log "removing Tailscale"
+command -v tailscale >/dev/null 2>&1 && tailscale logout 2>/dev/null || true
+systemctl stop tailscaled 2>/dev/null || true
+systemctl disable tailscaled 2>/dev/null || true
+apt-get purge -y tailscale >/dev/null 2>&1 || true
+rm -rf /var/lib/tailscale /etc/default/tailscaled
+log "Tailscale removed"
+
+log "removing Cockpit"
+systemctl stop cockpit.socket cockpit.service 2>/dev/null || true
+apt-get purge -y 'cockpit*' >/dev/null 2>&1 || true
+log "Cockpit removed"
+
+log "removing Syncthing"
+for u in $(systemctl list-unit-files 'syncthing@*.service' --no-legend 2>/dev/null | awk '{print $1}'); do
+    systemctl disable --now "$u" 2>/dev/null || true
+done
+apt-get purge -y syncthing >/dev/null 2>&1 || true
+log "Syncthing removed"
+
 # --- Reset shares: drop our managed block from smb.conf, clear the list -----
 if [ -f "$SMB_CONF" ] && grep -qF "$SMB_MARK" "$SMB_CONF" 2>/dev/null; then
     head -n "$(( $(grep -nF "$SMB_MARK" "$SMB_CONF" | head -1 | cut -d: -f1) - 1 ))" "$SMB_CONF" > "$SMB_CONF.tmp" \
@@ -115,6 +138,19 @@ nmcli -t -f NAME,TYPE connection show 2>/dev/null \
     | while read -r c; do
         [ -n "$c" ] && { nmcli connection delete "$c" 2>/dev/null && log "  deleted saved WiFi profile: $c"; }
       done
+# nmcli connection delete only removes NetworkManager's own copy -- netplan
+# keeps a mirrored YAML (e.g. 9x-NM-<uuid>.yaml) for any NM-managed wifi
+# connection, and replays it on boot, silently reconnecting to the "deleted"
+# network before homenas-firstboot even runs. Confirmed live: without this,
+# the box rejoined home WiFi and re-marked itself provisioned, defeating the
+# reset entirely. Strip those files too (never touches 01-gmnas-net.yaml,
+# which only covers ethernet/usb-tether, not wifi).
+for f in /etc/netplan/*-NM-*.yaml; do
+    if [ -f "$f" ] && grep -q '^[[:space:]]*wifis:' "$f"; then
+        rm -f "$f"
+        log "  removed stale netplan WiFi profile: $f"
+    fi
+done
 rm -f /etc/homenas/provisioned
 
 log "done -- rebooting now; homenas-firstboot launches GMNas-Setup AP on boot"
