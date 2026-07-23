@@ -786,11 +786,19 @@ def syncthing_state():
 def syncthing_device_id(user):
     """The box's Syncthing Device ID, without needing the GUI/login at all --
     `syncthing --device-id` derives it straight from the cert on disk (no
-    daemon, no auth needed), same value the GUI would show under Actions."""
+    daemon, no auth needed), same value the GUI would show under Actions.
+
+    Confirmed live: this app runs under systemd, which sets no $HOME at
+    all -- and the syncthing binary PANICS at startup (os.UserHomeDir()
+    fails) if $HOME is completely unset, even though --home already
+    specifies the config dir explicitly. Must set HOME ourselves for the
+    subprocess; the parent process's own (missing) HOME doesn't count.
+    """
     home_dir = f"/home/{user}/.local/state/syncthing"
+    env = {**os.environ, "HOME": f"/home/{user}"}
     try:
         out = subprocess.check_output(["syncthing", "--home", home_dir, "--device-id"],
-                                      text=True, stderr=subprocess.DEVNULL, timeout=10)
+                                      text=True, stderr=subprocess.DEVNULL, timeout=10, env=env)
         return out.strip()
     except Exception:
         return ""
