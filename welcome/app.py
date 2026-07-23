@@ -225,7 +225,7 @@ PAGE = """<!doctype html>
    <span class="grow"><span class="desc">Sync files with your phone/PC (no cloud)</span></span>
    {% if syncthing == 'ready' %}
    <button type="button" id="stReconnectBtn" disabled title="Complete the 4 steps below first"
-      style="width:auto;padding:10px 14px;margin-right:8px">Resync</button>
+      style="width:auto;margin:0 8px 0 0;padding:10px 14px;font-size:13px;border-radius:8px;font-weight:700">Resync</button>
    <a class="linkbtn svclink" data-proto="http" data-port="8384" href="http://{{ host }}:8384" target="_blank">Open ↗</a>
    {% elif syncthing == 'busy' %}<span class="badge b-busy">Installing…</span>
    {% else %}
@@ -283,7 +283,7 @@ PAGE = """<!doctype html>
    </div>
    {% endif %}
   </div>
-  <div class="links" style="align-items:start;gap:14px">
+  <div class="links" style="align-items:center;gap:14px">
    <div>
     <a href="https://play.google.com/store/apps/details?id=com.github.catfriend1.syncthingandroid" target="_blank"
        style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
