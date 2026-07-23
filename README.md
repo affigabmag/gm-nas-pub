@@ -48,7 +48,7 @@ Never commit passwords, password hashes, Tailscale authkeys, or private keys her
 | `gm-resume-usb.sh` | Same, over a phone USB tether instead of WiFi |
 | `gm-update.sh` | Refreshes the helper scripts from GitHub without reinstalling |
 | `gm-usb.sh` | Mount a USB drive / apply edits from the Ventoy pen |
-| `gm-benchmark.sh` | Quick CPU/RAM/disk score ("Windows Experience Index" style) |
+| `gm-benchmark.sh` | Quick CPU/RAM/disk score ("Windows/Linux Experience Index" style) |
 | `reset-setup.sh`, `factory-reset.sh` | Replay the first-boot WiFi/wizard flow (reset-setup keeps the account+shares; factory-reset wipes them too) |
 | `save-fail-log.sh` | Run from a shell during a **failed** offline install (before it retries) — saves `/var/log/installer`, `journalctl`, `dmesg` onto the Ventoy USB, since the installer's own logs live in the wiped-every-attempt live environment |
 | `ui/` | The `GMNas-Setup` captive-portal WiFi setup page (served by `wifi-connect`) |

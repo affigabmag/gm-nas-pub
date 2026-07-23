@@ -217,7 +217,7 @@ TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas l
          "Boxed menu" "Open a shell" \
          "Reboot" "Power off" "Quit" )
 DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log" "subiquity debug" \
-         "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows Experience Index style)" \
+         "firstboot / join-wifi / reset / etc." "btop" "CPU/RAM/disk score (Windows/Linux Experience Index style)" \
          "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
          "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal / Syncthing" "welcome + terminal" \

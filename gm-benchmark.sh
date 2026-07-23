@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# gm-benchmark — quick CPU/RAM/disk score, "Windows Experience Index" style.
+# gm-benchmark — quick CPU/RAM/disk score, "Windows/Linux Experience Index" style.
 # Installs sysbench on first run (needs internet). Uses the real root disk
 # device (not hardcoded /dev/sda) so it works regardless of storage layout.
 #     sudo gm-benchmark
