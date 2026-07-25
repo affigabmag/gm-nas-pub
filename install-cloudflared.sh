@@ -61,6 +61,29 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Wait for real internet + working DNS before touching anything network-
+# related below. Confirmed live: right after a reboot, WiFi can be
+# reconnected (an IP assigned) before systemd-resolved actually has a
+# working upstream DNS server pushed to it yet -- this script used to
+# assume internet was just there and failed outright ("server misbehaving"
+# resolving api.cloudflare.com) if run in that window. Retry instead of
+# failing immediately.
+echo "checking internet/DNS..."
+DNS_READY=no
+for _ in $(seq 1 15); do
+    if getent hosts api.cloudflare.com >/dev/null 2>&1; then
+        DNS_READY=yes
+        break
+    fi
+    sleep 2
+done
+if [ "$DNS_READY" != yes ]; then
+    echo "ERROR: no working internet/DNS after 30s -- check the box is connected" >&2
+    echo "to WiFi with internet, then try again." >&2
+    exit 1
+fi
+echo "internet/DNS OK"
+
 if ! command -v cloudflared >/dev/null 2>&1; then
     echo "== installing cloudflared =="
     ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
