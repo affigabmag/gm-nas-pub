@@ -13,6 +13,10 @@
 # ============================================================================
 set -u
 
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/install-cloudflared.log") 2>&1
+echo "$(date '+%F %T') ===== install-cloudflared start ====="
+
 CFG_DIR=/etc/cloudflared
 CERT="/root/.cloudflared/cert.pem"
 

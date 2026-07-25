@@ -7,6 +7,10 @@
 # ============================================================================
 set -u
 
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/gm-benchmark.log") 2>&1
+echo "$(date '+%F %T') ===== gm-benchmark start ====="
+
 if ! command -v sysbench >/dev/null 2>&1; then
     echo "Installing sysbench (one-time, needs internet)..."
     sudo apt-get update -y >/dev/null 2>&1

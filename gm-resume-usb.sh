@@ -6,6 +6,11 @@
 #     sudo gm-resume-usb
 # ============================================================================
 set -u
+
+LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+exec > >(tee -a "$LOGDIR/gm-resume-usb.log") 2>&1
+echo "$(date '+%F %T') ===== gm-resume-usb start ====="
+
 # blinking red / bold helpers (fall back to plain if not a terminal)
 if [ -t 1 ]; then BR=$'\e[5;1;31m'; RB=$'\e[0m'; else BR=; RB=; fi
 

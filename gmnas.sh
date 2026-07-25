@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.212.20260725224406"   # bump when this menu changes
+MENU_VER="01.213.20260725224656"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -130,12 +130,16 @@ act_a() { sh /etc/update-motd.d/99-gmnas 2>/dev/null || echo "device info not av
 act_c() { if [ -f /var/log/gm-nas-setup.log ]; then cat /var/log/gm-nas-setup.log; else echo "no setup log yet"; fi; }
 act_e() {
     echo "--- /var/log/gm-nas/ ---"; ls -l /var/log/gm-nas/ 2>/dev/null || echo "(no gm-nas logs yet)"
-    echo; echo "--- firstboot-wifi.log (last 50) ---"
-    sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"
-    echo; echo "--- menu-actions.log (last 30) ---"
-    sudo tail -n 30 /var/log/gm-nas/menu-actions.log 2>/dev/null || echo "(none)"
-    echo; echo "--- welcome.log (last 50) ---"
-    sudo tail -n 50 /var/log/gm-nas/welcome.log 2>/dev/null || echo "(none)"
+    # Generic over every *.log file rather than a hardcoded list -- every
+    # action gm-nas takes writes here now (menu actions, every install,
+    # every helper script, the welcome app), so a fixed shortlist would
+    # keep going stale as new logs get added.
+    local f
+    for f in /var/log/gm-nas/*.log; do
+        [ -f "$f" ] || continue
+        echo; echo "--- $(basename "$f") (last 30) ---"
+        sudo tail -n 30 "$f" 2>/dev/null || echo "(none)"
+    done
 }
 act_x() {
     echo "Checking internet…"; echo
@@ -366,16 +370,31 @@ dispatch_action() {
            # forever waiting on a terminal that isn't there (confirmed live:
            # Install Cockpit sat stopped in process state T until killed).
            APT_NI='DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"'
+           # Everything here was only ever visible transiently inside the dialog
+           # box -- nothing persisted, so a failed/hung install left no trace to
+           # diagnose afterward (confirmed live: this is exactly how the earlier
+           # Cockpit hang went unnoticed until someone happened to be watching).
+           # Every branch now logs a start marker + its own output to a shared
+           # file, same convention as every other gm-nas action.
+           INSTALL_LOG=/var/log/gm-nas/installs.log
+           mkdir -p /var/log/gm-nas 2>/dev/null || true
            case "$isel" in
                1) run_boxed "Install Cockpit" sudo bash -c \
-                   "$APT_NI cockpit </dev/null && systemctl enable --now cockpit.socket && echo done." ;;
+                   "echo \"\$(date '+%F %T') [installs] starting: Cockpit\" >> $INSTALL_LOG
+                   { $APT_NI cockpit </dev/null && systemctl enable --now cockpit.socket && echo done.; } 2>&1 | tee -a $INSTALL_LOG" ;;
                2) run_boxed "Install ttyd" sudo bash -c \
-                   "$APT_NI ttyd </dev/null && systemctl enable --now ttyd.service && echo done." ;;
+                   "echo \"\$(date '+%F %T') [installs] starting: ttyd\" >> $INSTALL_LOG
+                   { $APT_NI ttyd </dev/null && systemctl enable --now ttyd.service && echo done.; } 2>&1 | tee -a $INSTALL_LOG" ;;
                3) run_boxed "Install Tailscale" sudo bash -c \
-                   'curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo "done -- run: sudo tailscale up"' ;;
+                   "echo \"\$(date '+%F %T') [installs] starting: Tailscale\" >> $INSTALL_LOG
+                   { curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo 'done -- run: sudo tailscale up'; } 2>&1 | tee -a $INSTALL_LOG" ;;
                4) run_boxed "Install Cloudflare Tunnel" run_helper install-cloudflared ;;
-               5) run_boxed "Install btop" sudo bash -c "$APT_NI btop </dev/null && echo done." ;;
-               6) run_boxed "Install lynx" sudo bash -c "$APT_NI lynx </dev/null && echo done." ;;
+               5) run_boxed "Install btop" sudo bash -c \
+                   "echo \"\$(date '+%F %T') [installs] starting: btop\" >> $INSTALL_LOG
+                   { $APT_NI btop </dev/null && echo done.; } 2>&1 | tee -a $INSTALL_LOG" ;;
+               6) run_boxed "Install lynx" sudo bash -c \
+                   "echo \"\$(date '+%F %T') [installs] starting: lynx\" >> $INSTALL_LOG
+                   { $APT_NI lynx </dev/null && echo done.; } 2>&1 | tee -a $INSTALL_LOG" ;;
                *) echo "Cancelled."; pause ;;
            esac ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
