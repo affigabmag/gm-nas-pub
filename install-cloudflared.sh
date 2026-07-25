@@ -20,6 +20,32 @@ echo "$(date '+%F %T') ===== install-cloudflared start ====="
 CFG_DIR=/etc/cloudflared
 CERT="/root/.cloudflared/cert.pem"
 
+# Abort cleanly at any point (Ctrl+C, or typing "abort" at any prompt below)
+# instead of leaving a raw bash interrupt trace or a half-finished setup
+# with no explanation of what state things were left in.
+abort() {
+    echo
+    echo "== Aborted -- Cloudflare Tunnel setup was NOT completed. =="
+    if [ -n "${TUNNEL_NAME:-}" ] && [ -n "${TUNNEL_UUID:-}" ]; then
+        echo "   A tunnel named '$TUNNEL_NAME' may already exist on your"
+        echo "   Cloudflare account (created before the abort) -- re-running"
+        echo "   this option will detect and reuse it rather than duplicate it."
+    fi
+    exit 130
+}
+trap abort INT TERM
+
+# Read a prompt, treating "abort"/"a" (case-insensitive) as a request to
+# cancel the whole setup instead of being taken as a literal answer.
+read_or_abort() {
+    local __var="$1" __prompt="$2" __default="${3:-}" __ans
+    read -rp "$__prompt" __ans
+    case "$(printf '%s' "$__ans" | tr '[:upper:]' '[:lower:]')" in
+        abort|a) abort ;;
+    esac
+    printf -v "$__var" '%s' "${__ans:-$__default}"
+}
+
 if [ "$(id -u)" -ne 0 ]; then
     echo "Please run with sudo:  sudo bash install-cloudflared.sh" >&2
     exit 1
@@ -40,10 +66,13 @@ fi
 echo "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
 
 # --- 1) Log in to your Cloudflare account (one-time) -----------------------
+echo
+echo "(At any prompt: type 'abort' to cancel, or press Ctrl+C at any time.)"
+
 if [ -f "$CERT" ]; then
     echo
     echo "Already logged in (found $CERT)."
-    read -rp "Log in again with a different account? [y/N]: " relogin
+    read_or_abort relogin "Log in again with a different account? [y/N]: " "n"
     [ "$relogin" = "y" ] || [ "$relogin" = "Y" ] && rm -f "$CERT"
 fi
 if [ ! -f "$CERT" ]; then
@@ -53,6 +82,7 @@ if [ ! -f "$CERT" ]; then
     echo "  cloudflared will print a URL below -- open it in ANY"
     echo "  browser, on ANY device (your phone is fine), log in to"
     echo "  Cloudflare, and pick the domain you want to use."
+    echo "  (Ctrl+C here cancels the whole setup.)"
     echo "============================================================"
     cloudflared tunnel login
     if [ ! -f "$CERT" ]; then
@@ -64,8 +94,7 @@ fi
 
 # --- 2) Name the tunnel -----------------------------------------------------
 echo
-read -rp "Tunnel name [gmnas001]: " TUNNEL_NAME
-TUNNEL_NAME="${TUNNEL_NAME:-gmnas001}"
+read_or_abort TUNNEL_NAME "Tunnel name [gmnas001]: " "gmnas001"
 
 EXISTING_UUID="$(cloudflared tunnel list -o json 2>/dev/null \
     | grep -o "\"id\":\"[a-f0-9-]*\",\"name\":\"$TUNNEL_NAME\"" | grep -o '^"id":"[a-f0-9-]*"' | cut -d'"' -f4)"
@@ -91,7 +120,7 @@ CRED_FILE="/root/.cloudflared/${TUNNEL_UUID}.json"
 echo
 echo "Example: gmnas001.your-domain.com (must be on a domain already added"
 echo "to your Cloudflare account)."
-read -rp "Full hostname for this box: " HOSTNAME
+read_or_abort HOSTNAME "Full hostname for this box: " ""
 if [ -z "$HOSTNAME" ]; then
     echo "ERROR: a hostname is required." >&2
     exit 1
