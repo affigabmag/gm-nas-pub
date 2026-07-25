@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.211.20260725224105"   # bump when this menu changes
+MENU_VER="01.212.20260725224406"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -360,16 +360,22 @@ dispatch_action() {
            echo "  5) btop (system monitor)"
            echo "  6) lynx (terminal browser)"
            read -rp "Select [1-6, anything else cancels]: " isel
+           # DEBIAN_FRONTEND=noninteractive + force-confdef/force-confold on every
+           # apt-get here: plain "-y" only auto-answers "continue? [Y/n]", NOT
+           # dpkg's own conffile keep/replace prompts -- those still block
+           # forever waiting on a terminal that isn't there (confirmed live:
+           # Install Cockpit sat stopped in process state T until killed).
+           APT_NI='DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"'
            case "$isel" in
                1) run_boxed "Install Cockpit" sudo bash -c \
-                   'apt-get install -y cockpit && systemctl enable --now cockpit.socket && echo done.' ;;
+                   "$APT_NI cockpit </dev/null && systemctl enable --now cockpit.socket && echo done." ;;
                2) run_boxed "Install ttyd" sudo bash -c \
-                   'apt-get install -y ttyd && systemctl enable --now ttyd.service && echo done.' ;;
+                   "$APT_NI ttyd </dev/null && systemctl enable --now ttyd.service && echo done." ;;
                3) run_boxed "Install Tailscale" sudo bash -c \
                    'curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo "done -- run: sudo tailscale up"' ;;
                4) run_boxed "Install Cloudflare Tunnel" run_helper install-cloudflared ;;
-               5) run_boxed "Install btop" sudo bash -c 'apt-get install -y btop && echo done.' ;;
-               6) run_boxed "Install lynx" sudo bash -c 'apt-get install -y lynx && echo done.' ;;
+               5) run_boxed "Install btop" sudo bash -c "$APT_NI btop </dev/null && echo done." ;;
+               6) run_boxed "Install lynx" sudo bash -c "$APT_NI lynx </dev/null && echo done." ;;
                *) echo "Cancelled."; pause ;;
            esac ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
