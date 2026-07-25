@@ -19,6 +19,20 @@ log "=============== reset-setup start ==============="
 log "clearing provisioned flag"
 rm -f /etc/homenas/provisioned
 
+# Same reasoning as factory-reset.sh: whatever console autologin state
+# existed before this ran, force it OFF here too. The First-time wizard
+# switches the box to AP + phone setup, not back to an unauthenticated
+# console menu -- physical access should require a real login regardless
+# of which reset path got here.
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --noclear %I $TERM
+EOF
+systemctl daemon-reload 2>/dev/null || true
+log "console autologin disabled -- tty1 now requires a real login"
+
 log "stopping welcome app so wifi-connect can own port 80"
 systemctl stop gmnas-welcome.service 2>/dev/null || true
 log "port 80 now: $(ss -ltnp 2>/dev/null | grep ':80 ' || echo free)"

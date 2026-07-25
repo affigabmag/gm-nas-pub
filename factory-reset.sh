@@ -83,22 +83,24 @@ DEBIAN_FRONTEND=noninteractive apt-get purge -y \
     </dev/null syncthing >/dev/null 2>&1 || true
 log "Syncthing removed"
 
-# --- Restore console autologin -----------------------------------------------
-# The admin account (and its login) is about to be wiped below -- without
-# this, the box would be stranded at a login prompt with no valid account,
-# exactly the problem console autologin exists to avoid before any admin
-# account is created. Put tty1 back to autologin as the built-in 'gmnas'
-# account, matching a fresh install (see welcome/app.py's
-# disable_console_autologin, which turns this back off once a new admin
-# account is created again).
+# --- Console must require a real login after reset --------------------------
+# This USED to restore autologin as 'gmnas' here -- that was a real security
+# hole: it meant anyone with physical access to the box, right after a
+# factory reset, got the full admin menu (shell access, WiFi credentials,
+# logs, reboot/power off, everything) with ZERO authentication, at exactly
+# the moment the box is being handed off to be reconfigured. Confirmed and
+# fixed on request. The AP setup flow (phone + browser) does NOT need
+# console autologin at all -- it's a separate path. A physical console
+# session now requires actual credentials, same as
+# welcome/app.py's disable_console_autologin().
 mkdir -p /etc/systemd/system/getty@tty1.service.d
 cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<'EOF'
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin gmnas --noclear %I $TERM
+ExecStart=-/sbin/agetty --noclear %I $TERM
 EOF
 systemctl daemon-reload 2>/dev/null || true
-log "console autologin restored (gmnas)"
+log "console autologin disabled -- tty1 now requires a real login"
 
 # --- Reset shares: drop our managed block from smb.conf, clear the list -----
 if [ -f "$SMB_CONF" ] && grep -qF "$SMB_MARK" "$SMB_CONF" 2>/dev/null; then
