@@ -29,7 +29,7 @@ log "flag=$FLAG  wifi_connect=$WIFI_CONNECT  ui=$UI_DIR"
 # connect to the setup AP" and we have no live access to the box, this is
 # the only record of whether the WiFi radio was even usable at boot.
 log "-- hardware/driver diagnostics --"
-log "rfkill: $(rfkill list 2>&1 | tr '\n' ' | ')"
+log "rfkill: $(command -v rfkill >/dev/null 2>&1 && rfkill list 2>&1 | tr '\n' ' | ' || echo 'rfkill not installed')"
 log "wifi interfaces: $(for i in /sys/class/net/*; do [ -d "$i/wireless" ] && echo -n "$(basename "$i") "; done)"
 log "lsusb (wifi-relevant): $(lsusb 2>&1 | grep -iE 'wireless|wifi|802.11|realtek|atheros|broadcom|mediatek' || echo none)"
 log "dmesg wifi/wlan errors: $(dmesg 2>/dev/null | grep -iE 'wlan|wifi|80211|firmware' | tail -10 | tr '\n' ' | ')"
@@ -84,10 +84,23 @@ rm -f "$FLAG" 2>/dev/null || true
 # wifi-connect's captive portal can bind.
 systemctl stop gmnas-welcome.service 2>/dev/null || true
 
-if ! nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
-    log "NO wifi device found -> cannot start setup AP, exit 0"
-    exit 0
-fi
+# Retry, don't fail once: on a cold power-on (as opposed to a warm reboot),
+# the WiFi driver/firmware can genuinely still be loading when this service
+# starts (confirmed live: dmesg showed the rtw88 driver's firmware not
+# finishing load until ~14s into boot). A single immediate check that finds
+# no wifi device yet used to give up right there and never show the AP at
+# all -- even though the device was fully present half a minute later.
+WIFI_WAIT=0
+until nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; do
+    if [ "$WIFI_WAIT" -ge 30 ]; then
+        log "NO wifi device found after ${WIFI_WAIT}s of waiting -> cannot start setup AP, exit 0"
+        exit 0
+    fi
+    log "no wifi device visible yet (waited ${WIFI_WAIT}s) -- driver may still be loading, retrying..."
+    sleep 3
+    WIFI_WAIT=$((WIFI_WAIT + 3))
+done
+[ "$WIFI_WAIT" -gt 0 ] && log "wifi device appeared after ${WIFI_WAIT}s"
 
 WIFI_DEV="$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
 log "wifi device: $WIFI_DEV"
@@ -153,9 +166,14 @@ log "wifi-connect alive? $(kill -0 "$WC_PID" 2>/dev/null && echo yes || echo NO-
 # mode (driver limitation, busy device, etc.), which looks identical to
 # "working" in the process-alive check above but means no phone will ever
 # see the network.
-log "iw mode check: $(iw dev "$WIFI_DEV" info 2>&1 | tr '\n' ' | ')"
-log "iw reg domain: $(iw reg get 2>&1 | tr '\n' ' | ')"
-log "rfkill (post-start): $(rfkill list 2>&1 | tr '\n' ' | ')"
+if command -v iw >/dev/null 2>&1; then
+    log "iw mode check: $(iw dev "$WIFI_DEV" info 2>&1 | tr '\n' ' | ')"
+    log "iw reg domain: $(iw reg get 2>&1 | tr '\n' ' | ')"
+else
+    log "iw mode check: iw not installed"
+    log "iw reg domain: iw not installed"
+fi
+log "rfkill (post-start): $(command -v rfkill >/dev/null 2>&1 && rfkill list 2>&1 | tr '\n' ' | ' || echo 'rfkill not installed')"
 # IP + gateway on the AP interface itself -- if wifi-connect never assigned
 # its own 192.168.42.1, no phone can ever get a DHCP lease no matter how
 # good the radio/SSID broadcast is.
@@ -192,7 +210,12 @@ for _ in $(seq 1 600); do
         HB_LAST="$HB_NOW"
         HB_LEASES=""
         [ -n "$DHCP_LEASE_FILE" ] && HB_LEASES="$(cat "$DHCP_LEASE_FILE" 2>/dev/null | tr '\n' ' | ')"
-        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station') ip=$(ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | awk '{print $4}') dnsmasq=$(pgrep -x dnsmasq >/dev/null && echo up || echo DOWN) portal=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://192.168.42.1/ 2>/dev/null || echo unreachable) leases=[${HB_LEASES:-none}]"
+        HB_MODE="n/a"; HB_CLIENTS="n/a"
+        if command -v iw >/dev/null 2>&1; then
+            HB_MODE="$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}')"
+            HB_CLIENTS="$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station')"
+        fi
+        log "heartbeat: AP proc alive, mode=$HB_MODE clients=$HB_CLIENTS ip=$(ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | awk '{print $4}') dnsmasq=$(pgrep -x dnsmasq >/dev/null && echo up || echo DOWN) portal=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://192.168.42.1/ 2>/dev/null || echo unreachable) leases=[${HB_LEASES:-none}]"
     fi
     NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
     if [ -n "$NEW" ]; then
