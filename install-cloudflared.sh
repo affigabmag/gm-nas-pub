@@ -267,6 +267,13 @@ if [ "$OS_CHOICE" = "1" ] || [ "$OS_CHOICE" = "3" ]; then
     echo "${B}${CY}=== Windows (PowerShell) ===${R}"
     cat <<WINEOF
 winget install --id Cloudflare.cloudflared -e --silent
+# winget updates the system PATH, but THIS already-open PowerShell window
+# doesn't see it until reopened -- confirmed live: ssh's ProxyCommand
+# couldn't find cloudflared right after install ("posix_spawnp: No such
+# file or directory"), in the very same window that just installed it.
+# Refresh this session's PATH so the ssh command below actually works
+# without needing to close and reopen the window.
+\$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 if (-not (Test-Path "\$env:USERPROFILE\.ssh")) { New-Item -ItemType Directory "\$env:USERPROFILE\.ssh" | Out-Null }
 Add-Content "\$env:USERPROFILE\.ssh\config" "\`nHost $HOSTNAME\`n  ProxyCommand cloudflared access ssh --hostname %h\`n"
 ssh gmnas@$HOSTNAME
