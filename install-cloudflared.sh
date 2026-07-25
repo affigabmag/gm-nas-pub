@@ -176,17 +176,34 @@ fi
 CRED_FILE="/root/.cloudflared/${TUNNEL_UUID}.json"
 
 # --- 3) Hostname to expose ---------------------------------------------------
+# If this tunnel already has a hostname configured (from a previous run),
+# don't ask again -- just confirm and reuse it. Re-running this option
+# every time asked for the hostname from scratch even when nothing had
+# changed, which is unnecessary friction for something already set up.
+EXISTING_HOSTNAME=""
+if [ -f "$CFG_DIR/config.yml" ] && grep -q "^tunnel: $TUNNEL_UUID$" "$CFG_DIR/config.yml"; then
+    # config.yml lines look like "  - hostname: value" -- $2 in awk's default
+    # whitespace split is the literal word "hostname:", not the value (real
+    # bug, confirmed live: it printed "hostname:" as the actual hostname).
+    EXISTING_HOSTNAME="$(sed -n 's/.*hostname: *//p' "$CFG_DIR/config.yml" | head -1)"
+fi
 echo
-echo "Example: gmnas001.your-domain.com (must be on a domain already added"
-echo "to your Cloudflare account)."
-read_or_abort HOSTNAME "Full hostname for this box: " ""
+if [ -n "$EXISTING_HOSTNAME" ]; then
+    echo "This tunnel is already routed to: $EXISTING_HOSTNAME"
+    read_or_abort HOSTNAME "Hostname [$EXISTING_HOSTNAME, Enter to keep]: " "$EXISTING_HOSTNAME"
+else
+    echo "Example: gmnas001.your-domain.com (must be on a domain already added"
+    echo "to your Cloudflare account)."
+    read_or_abort HOSTNAME "Full hostname for this box: " ""
+fi
 if [ -z "$HOSTNAME" ]; then
     echo "ERROR: a hostname is required." >&2
     exit 1
 fi
 
-echo "Routing $HOSTNAME -> tunnel '$TUNNEL_NAME'..."
-if ! cloudflared tunnel route dns "$TUNNEL_NAME" "$HOSTNAME"; then
+if [ "$HOSTNAME" = "$EXISTING_HOSTNAME" ]; then
+    echo "Keeping existing route: $HOSTNAME -> tunnel '$TUNNEL_NAME' (already routed, skipping)."
+elif ! cloudflared tunnel route dns "$TUNNEL_NAME" "$HOSTNAME"; then
     echo "ERROR: DNS routing failed (hostname already used elsewhere, or the" >&2
     echo "domain isn't on this Cloudflare account)." >&2
     exit 1
