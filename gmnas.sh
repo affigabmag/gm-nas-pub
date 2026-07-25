@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.219.20260725232630"   # bump when this menu changes
+MENU_VER="01.220.20260725232836"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -326,6 +326,10 @@ dispatch_action() {
            echo "setup mode (you'll lose this network connection). Continue? [y/N]"
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
+             echo "Also set up Cloudflare Tunnel (remote SSH access) before switching"
+             echo "networks? [y/N]"
+             read -rsn1 cf; echo
+             if [ "$cf" = "y" ] || [ "$cf" = "Y" ]; then run_helper install-cloudflared; fi
              run_boxed "First-time wizard" run_helper reset-setup
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
@@ -339,11 +343,20 @@ dispatch_action() {
            pause ;;
         w|W) printf "${RD}${B}Factory reset${R} — this removes the current admin account, its\n"
            echo "Samba login, and all share definitions (defaults reseed fresh)."
-           echo "Files under /srv/storage are KEPT. The gm-nas will then replay the"
-           echo "WHOLE first-boot flow: WiFi setup AP -> welcome wizard -> shares."
+           # Was WRONGLY claiming storage is kept -- confirmed live this session:
+           # factory-reset.sh reformats the whole /srv/storage partition. Telling
+           # a real user their files are safe when they aren't is dangerous.
+           echo "Storage under /srv/storage is WIPED (partition reformatted)."
+           echo "Tailscale/Cockpit/Syncthing are also removed. The gm-nas will then"
+           echo "replay the WHOLE first-boot flow: WiFi setup AP -> welcome wizard -> shares."
            printf "${RD}Continue? [y/N]${R} "
            read -rsn1 yn; echo
            if [ "$yn" = "y" ] || [ "$yn" = "Y" ]; then
+             echo "Also set up Cloudflare Tunnel (remote SSH access) before resetting?"
+             echo "(the tunnel's own login/config isn't touched by factory reset, so"
+             echo "setting it up now means it's already there after the reset.) [y/N]"
+             read -rsn1 cf; echo
+             if [ "$cf" = "y" ] || [ "$cf" = "Y" ]; then run_helper install-cloudflared; fi
              run_boxed "Factory reset" run_helper factory-reset
              echo "  ============ NOW ON YOUR PHONE ============"
              echo "   1) WiFi:     GMNas-Setup"
