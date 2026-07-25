@@ -23,12 +23,41 @@ import json
 import ctypes
 import base64
 import shutil
+import logging
+import traceback
 import threading
 import subprocess
 from html import escape
 from flask import Flask, request, redirect, render_template_string, jsonify
 
 app = Flask(__name__)
+
+# Request/error logging -- when something breaks on a box we have no live
+# access to (a customer's shipped unit, or ours mid-test), "which route was
+# hit, with what result, and did it raise" is often the only diagnostic
+# trail available after the fact.
+os.makedirs("/var/log/gm-nas", exist_ok=True)
+_log_handler = logging.FileHandler("/var/log/gm-nas/welcome.log")
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [welcome] %(message)s", "%Y-%m-%d %H:%M:%S"))
+app.logger.setLevel(logging.INFO)
+app.logger.addHandler(_log_handler)
+
+
+@app.before_request
+def _log_request_start():
+    app.logger.info("--> %s %s from %s", request.method, request.path, request.remote_addr)
+
+
+@app.after_request
+def _log_request_end(response):
+    app.logger.info("<-- %s %s -> %s", request.method, request.path, response.status_code)
+    return response
+
+
+@app.errorhandler(Exception)
+def _log_unhandled_exception(e):
+    app.logger.error("UNHANDLED EXCEPTION on %s %s:\n%s", request.method, request.path, traceback.format_exc())
+    raise e
 
 STORAGE = "/srv/storage"
 PW_FLAG = "/etc/homenas/password-not-set"

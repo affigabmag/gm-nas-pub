@@ -25,6 +25,16 @@ WIFI_CONNECT="/usr/local/lib/wifi-connect/wifi-connect"
 log "=============== firstboot-wifi start ==============="
 log "flag=$FLAG  wifi_connect=$WIFI_CONNECT  ui=$UI_DIR"
 
+# Hardware/driver diagnostics up front -- when a customer reports "couldn't
+# connect to the setup AP" and we have no live access to the box, this is
+# the only record of whether the WiFi radio was even usable at boot.
+log "-- hardware/driver diagnostics --"
+log "rfkill: $(rfkill list 2>&1 | tr '\n' ' | ')"
+log "wifi interfaces: $(for i in /sys/class/net/*; do [ -d "$i/wireless" ] && echo -n "$(basename "$i") "; done)"
+log "lsusb (wifi-relevant): $(lsusb 2>&1 | grep -iE 'wireless|wifi|802.11|realtek|atheros|broadcom|mediatek' || echo none)"
+log "dmesg wifi/wlan errors: $(dmesg 2>/dev/null | grep -iE 'wlan|wifi|80211|firmware' | tail -10 | tr '\n' ' | ')"
+log "nmcli general status: $(nmcli general status 2>&1 | tr '\n' ' | ')"
+
 # -------------------------------------------------------------------------
 # DECISION IS CONNECTIVITY-BASED (not the provisioned flag): run the WiFi
 # wizard whenever the box has no active network. A headless box (no keyboard/
@@ -120,12 +130,28 @@ log "post-start device status: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/nul
 log "post-start addresses: $(ip -brief a 2>/dev/null | tr '\n' ' ')"
 log "listening on :80? $(ss -ltnp 2>/dev/null | grep ':80 ' || echo none)"
 log "wifi-connect alive? $(kill -0 "$WC_PID" 2>/dev/null && echo yes || echo NO-it-exited)"
+# Confirm the interface is genuinely in AP mode -- wifi-connect can stay
+# alive as a process while the radio itself failed to actually enter AP
+# mode (driver limitation, busy device, etc.), which looks identical to
+# "working" in the process-alive check above but means no phone will ever
+# see the network.
+log "iw mode check: $(iw dev "$WIFI_DEV" info 2>&1 | tr '\n' ' | ')"
 
 log "watching for the user's WiFi selection (up to ~20 min)..."
+HB_LAST=0
 for _ in $(seq 1 600); do
     if ! kill -0 "$WC_PID" 2>/dev/null; then
         log "wifi-connect process exited on its own"
+        log "dmesg wifi/wlan errors since AP start: $(dmesg 2>/dev/null | grep -iE 'wlan|wifi|80211|firmware' | tail -10 | tr '\n' ' | ')"
         break
+    fi
+    # Heartbeat every ~60s during the long wait -- without this, a box that
+    # sits untouched (or whose AP silently drops mid-wait) leaves a 20-min
+    # gap in the log with zero evidence either way.
+    HB_NOW="$(date +%s)"
+    if [ $((HB_NOW - HB_LAST)) -ge 60 ]; then
+        HB_LAST="$HB_NOW"
+        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station')"
     fi
     NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
     if [ -n "$NEW" ]; then

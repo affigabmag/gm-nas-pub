@@ -132,6 +132,10 @@ act_e() {
     echo "--- /var/log/gm-nas/ ---"; ls -l /var/log/gm-nas/ 2>/dev/null || echo "(no gm-nas logs yet)"
     echo; echo "--- firstboot-wifi.log (last 50) ---"
     sudo tail -n 50 /var/log/gm-nas/firstboot-wifi.log 2>/dev/null || echo "(none)"
+    echo; echo "--- menu-actions.log (last 30) ---"
+    sudo tail -n 30 /var/log/gm-nas/menu-actions.log 2>/dev/null || echo "(none)"
+    echo; echo "--- welcome.log (last 50) ---"
+    sudo tail -n 50 /var/log/gm-nas/welcome.log 2>/dev/null || echo "(none)"
 }
 act_x() {
     echo "Checking internet…"; echo
@@ -258,6 +262,13 @@ render() {
 # through the exact same logic instead of duplicating it.
 dispatch_action() {
     local c="$1"
+    # Record every action taken at the console, independent of whether it
+    # succeeds -- when something goes wrong on a box we have no live access
+    # to, "what did the user actually press, and when" is often the only
+    # way to reconstruct what happened.
+    mkdir -p /var/log/gm-nas 2>/dev/null || true
+    printf '%s [menu] key=%s user=%s\n' "$(date '+%F %T')" "$c" "$(whoami)" \
+        >> /var/log/gm-nas/menu-actions.log 2>/dev/null || true
     case "$c" in
         a|A) run_boxed "Device info" act_a ;;
         b|B) run_boxed "Status / diag" bash -c 'command -v gm-debug >/dev/null && gm-debug || /usr/local/bin/gm-debug' ;;
