@@ -234,16 +234,40 @@ echo "  Tunnel name : $TUNNEL_NAME"
 echo "  Status      : sudo systemctl status cloudflared"
 echo "  Logs        : sudo journalctl -u cloudflared -f"
 echo
-echo "  ------------------------------------------------------------"
-echo "  TO CONNECT FROM ANY REMOTE COMPUTER:"
-echo "  ------------------------------------------------------------"
-echo "  1) Install cloudflared on that computer (one-time):"
-echo "     https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+
+# One paste-able block per OS instead of a generic 3-step list -- the end
+# user picks their OS once and copies ONE thing into their terminal that
+# installs cloudflared (if needed), wires up SSH config, and connects, all
+# in one go. No separate "now edit this file" step to get wrong.
+echo "------------------------------------------------------------"
+echo "TO CONNECT FROM A REMOTE COMPUTER, pick your OS below and copy"
+echo "the WHOLE block into a terminal there (PowerShell on Windows,"
+echo "any terminal on Linux/macOS). Nothing else to do -- it installs"
+echo "cloudflared if needed, sets up SSH, and connects."
+echo "------------------------------------------------------------"
 echo
-echo "  2) Add this to that computer's ~/.ssh/config:"
-echo "       Host $HOSTNAME"
-echo "         ProxyCommand cloudflared access ssh --hostname %h"
+echo "=== Windows (PowerShell) ==="
+cat <<WINEOF
+winget install --id Cloudflare.cloudflared -e --silent
+if (-not (Test-Path "\$env:USERPROFILE\.ssh")) { New-Item -ItemType Directory "\$env:USERPROFILE\.ssh" | Out-Null }
+Add-Content "\$env:USERPROFILE\.ssh\config" "\`nHost $HOSTNAME\`n  ProxyCommand cloudflared access ssh --hostname %h\`n"
+ssh gmnas@$HOSTNAME
+WINEOF
 echo
-echo "  3) Then just:"
-echo "     ssh gmnas@$HOSTNAME"
+echo "=== Linux / macOS (bash) ==="
+cat <<NIXEOF
+command -v cloudflared >/dev/null 2>&1 || {
+  if command -v brew >/dev/null 2>&1; then brew install cloudflared
+  else
+    sudo mkdir -p /usr/share/keyrings
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared \$(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+    sudo apt-get update && sudo apt-get install -y cloudflared
+  fi
+}
+mkdir -p ~/.ssh
+printf '\nHost $HOSTNAME\n  ProxyCommand cloudflared access ssh --hostname %%h\n' >> ~/.ssh/config
+ssh gmnas@$HOSTNAME
+NIXEOF
+echo
 echo "============================================================"
