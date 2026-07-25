@@ -84,9 +84,11 @@ rm -f "$FLAG" 2>/dev/null || true
 # The welcome app may have already grabbed :80 on a stale flag — free it so
 # wifi-connect's captive portal can bind.
 systemctl stop gmnas-welcome.service 2>/dev/null || true
-# So the console's pre-login banner (/etc/issue) shows setup-mode instructions
-# right away instead of stale "online" info from before this reset.
-bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
+# NOTE: the setup-mode /etc/issue banner is written further down, only once
+# the AP is CONFIRMED actually up with 192.168.42.1 -- writing it here would
+# tell someone at the console to connect to GMNas-Setup before the radio has
+# necessarily finished the transition, which can take several seconds and
+# occasionally needs a restart to actually take (see below).
 
 # Retry, don't fail once: on a cold power-on (as opposed to a warm reboot),
 # the WiFi driver/firmware can genuinely still be loading when this service
@@ -197,9 +199,40 @@ done) &
 IWEVENT_PID=$!
 trap 'kill "$IWEVENT_PID" 2>/dev/null || true' EXIT
 
-# Give it a moment then log the AP state so we can see if the portal is up.
-sleep 8
-log "-- AP diagnostics (t+8s) --"
+# Actively wait for the AP interface to stabilize with 192.168.42.1 instead
+# of a single fixed sleep -- confirmed live that the radio's AP transition
+# can take longer than expected, or just not take at all on the first try.
+# Retry a few times, restarting wifi-connect itself between attempts (not
+# just waiting longer), before giving up and showing diagnostics either way.
+AP_READY=no
+for ap_attempt in 1 2 3 4; do
+    sleep 4
+    if ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | grep -q '192\.168\.42\.1'; then
+        AP_READY=yes
+        log "AP interface confirmed up with 192.168.42.1 (attempt $ap_attempt/4)"
+        break
+    fi
+    log "AP interface not up yet (attempt $ap_attempt/4)"
+    [ "$ap_attempt" -eq 4 ] && break
+    log "  restarting wifi-connect to retry the AP transition..."
+    kill "$WC_PID" 2>/dev/null || true
+    wait "$WC_PID" 2>/dev/null || true
+    sleep 2
+    "$WIFI_CONNECT" \
+        --portal-ssid "$PORTAL_SSID" \
+        --portal-passphrase "$PORTAL_PASSPHRASE" \
+        --portal-interface "$WIFI_DEV" \
+        --ui-directory "$UI_DIR" >>"$LOG" 2>&1 &
+    WC_PID=$!
+    log "  wifi-connect restarted, pid=$WC_PID"
+done
+if [ "$AP_READY" = yes ]; then
+    bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
+else
+    log "AP never confirmed up with 192.168.42.1 after retries -- showing setup banner anyway so the console isn't stuck on stale info"
+    bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
+fi
+log "-- AP diagnostics (post-stabilization) --"
 log "post-start device status: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
 log "post-start addresses: $(ip -brief a 2>/dev/null | tr '\n' ' ')"
 log "listening on :80? $(ss -ltnp 2>/dev/null | grep ':80 ' || echo none)"
