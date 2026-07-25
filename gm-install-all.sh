@@ -17,6 +17,14 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
+# Owned by root:sudo, setgid + group-write: this directory is written to by
+# BOTH root (services, sudo'd scripts) and the plain console user (the
+# menu's own action log) -- created bare (root:root 755) it silently
+# blocks the console user's writes with "Permission denied" the first time
+# anything root-owned lands in it. setgid ensures every file created here
+# afterward inherits the "sudo" group automatically.
+chown root:sudo "$LOGDIR" 2>/dev/null || true
+chmod 2775 "$LOGDIR" 2>/dev/null || true
 exec > >(tee -a "$LOGDIR/gm-install-all.log") 2>&1
 echo "$(date '+%F %T') ===== gm-install-all (resume) start ====="
 
