@@ -34,6 +34,7 @@ get welcome/app.py                  /usr/local/lib/gmnas-welcome/app.py
 get files/gmnas-welcome.service     /etc/systemd/system/gmnas-welcome.service
 get files/ttyd.service              /etc/systemd/system/ttyd.service
 get files/firstboot-wifi.sh         /usr/local/sbin/firstboot-wifi.sh
+get files/update-issue.sh           /usr/local/sbin/update-issue.sh
 get files/homenas-firstboot.service /etc/systemd/system/homenas-firstboot.service
 get ui/index.html                   /usr/local/lib/wifi-connect/ui/index.html
 # Captive-portal probe files: make phones auto-open the setup page on connect.
@@ -47,6 +48,8 @@ for h in gmnas gm-usb gm-update join-wifi reset-setup factory-reset gm-install-a
 done
 
 chmod +x /usr/local/sbin/firstboot-wifi.sh 2>/dev/null || true
+chmod +x /usr/local/sbin/update-issue.sh 2>/dev/null || true
+bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl enable --now ttyd.service gmnas-welcome.service 2>/dev/null || true

@@ -151,6 +151,9 @@ for f in generate_204 gen_204 hotspot-detect.html ncsi.txt connecttest.txt redir
 done
 retry curl -fsSL "$BASE/files/firstboot-wifi.sh" -o /usr/local/sbin/firstboot-wifi.sh
 chmod +x /usr/local/sbin/firstboot-wifi.sh || true
+retry curl -fsSL "$BASE/files/update-issue.sh" -o /usr/local/sbin/update-issue.sh
+chmod +x /usr/local/sbin/update-issue.sh || true
+bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
 retry curl -fsSL "$BASE/files/homenas-firstboot.service" -o /etc/systemd/system/homenas-firstboot.service
 systemctl daemon-reload
 systemctl enable homenas-firstboot.service 2>/dev/null || true

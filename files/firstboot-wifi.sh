@@ -66,6 +66,7 @@ if saved_wifi; then
     if [ "$CONNECTED" = yes ]; then
         log "WiFi is UP -> normal boot (mark provisioned), no wizard"
         mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
         exit 0
     fi
     log "saved WiFi did not connect -> launching setup AP"
@@ -83,6 +84,9 @@ rm -f "$FLAG" 2>/dev/null || true
 # The welcome app may have already grabbed :80 on a stale flag — free it so
 # wifi-connect's captive portal can bind.
 systemctl stop gmnas-welcome.service 2>/dev/null || true
+# So the console's pre-login banner (/etc/issue) shows setup-mode instructions
+# right away instead of stale "online" info from before this reset.
+bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
 
 # Retry, don't fail once: on a cold power-on (as opposed to a warm reboot),
 # the WiFi driver/firmware can genuinely still be loading when this service
@@ -286,6 +290,7 @@ for _ in $(seq 1 600); do
             fi
         done
         mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
         log "provisioned -> rebooting now (clean client join)"
         sleep 2
         systemctl reboot
@@ -302,7 +307,9 @@ if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
         | while read -r ap; do
             [ -n "$ap" ] && { nmcli connection delete "$ap" 2>/dev/null && log "deleted setup-AP profile: $ap"; }
           done
-    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"; sleep 3
+    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+    bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
+    sleep 3
     log "provisioned -> rebooting now"
     systemctl reboot
     exit 0
