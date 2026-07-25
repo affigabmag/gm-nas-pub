@@ -90,17 +90,56 @@ systemctl stop gmnas-welcome.service 2>/dev/null || true
 # finishing load until ~14s into boot). A single immediate check that finds
 # no wifi device yet used to give up right there and never show the AP at
 # all -- even though the device was fully present half a minute later.
-WIFI_WAIT=0
-until nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; do
-    if [ "$WIFI_WAIT" -ge 30 ]; then
-        log "NO wifi device found after ${WIFI_WAIT}s of waiting -> cannot start setup AP, exit 0"
-        exit 0
+#
+# 5 cycles of (2 checks, 15s apart); if still nothing after both checks in
+# a cycle, kick the driver (it may be wedged, not just slow) before the
+# next cycle. Progress logged as a bar so the whole wait is visible in the
+# log, not just a silent multi-minute gap.
+WIFI_CYCLES=5
+WIFI_ATTEMPTS_PER_CYCLE=2
+WIFI_RETRY_SECS=15
+WIFI_TOTAL_STEPS=$((WIFI_CYCLES * WIFI_ATTEMPTS_PER_CYCLE))
+wifi_progress_bar() {
+    local done="$1" total="$2" pct filled bar
+    pct=$((done * 100 / total))
+    filled=$((done * 20 / total))
+    bar="$(printf '#%.0s' $(seq 1 "$filled" 2>/dev/null))$(printf -- '-%.0s' $(seq 1 $((20 - filled)) 2>/dev/null))"
+    log "waiting for wifi device: [$bar] ${pct}% (step $done/$total)"
+}
+kick_wifi_driver() {
+    # Device-agnostic "restart" -- at this point there IS no net interface
+    # yet to ask which kernel module backs it, so we can't target a modprobe
+    # reload by name. Re-trigger udev's hardware detection + bounce
+    # NetworkManager instead; safe to run repeatedly, no-op on healthy
+    # hardware, gives a wedged/slow driver another chance to enumerate.
+    log "no wifi device after ${WIFI_ATTEMPTS_PER_CYCLE} checks this cycle -- kicking the driver (udev retrigger + NetworkManager restart)"
+    udevadm trigger --action=add --subsystem-match=net 2>/dev/null || true
+    udevadm settle 2>/dev/null || true
+    systemctl restart NetworkManager 2>/dev/null || true
+}
+WIFI_STEP=0
+WIFI_FOUND=no
+for cycle in $(seq 1 "$WIFI_CYCLES"); do
+    for attempt in $(seq 1 "$WIFI_ATTEMPTS_PER_CYCLE"); do
+        if nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
+            WIFI_FOUND=yes
+            break 2
+        fi
+        WIFI_STEP=$((WIFI_STEP + 1))
+        wifi_progress_bar "$WIFI_STEP" "$WIFI_TOTAL_STEPS"
+        sleep "$WIFI_RETRY_SECS"
+    done
+    if nmcli -t -f TYPE device 2>/dev/null | grep -q '^wifi$'; then
+        WIFI_FOUND=yes
+        break
     fi
-    log "no wifi device visible yet (waited ${WIFI_WAIT}s) -- driver may still be loading, retrying..."
-    sleep 3
-    WIFI_WAIT=$((WIFI_WAIT + 3))
+    [ "$cycle" -lt "$WIFI_CYCLES" ] && kick_wifi_driver
 done
-[ "$WIFI_WAIT" -gt 0 ] && log "wifi device appeared after ${WIFI_WAIT}s"
+if [ "$WIFI_FOUND" != yes ]; then
+    log "NO wifi device found after $WIFI_CYCLES cycles ($((WIFI_CYCLES * WIFI_ATTEMPTS_PER_CYCLE * WIFI_RETRY_SECS))s total) -> cannot start setup AP, exit 0"
+    exit 0
+fi
+[ "$WIFI_STEP" -gt 0 ] && log "wifi device appeared after $((WIFI_STEP * WIFI_RETRY_SECS))s"
 
 WIFI_DEV="$(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
 log "wifi device: $WIFI_DEV"
