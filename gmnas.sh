@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.224.20260725234647"   # bump when this menu changes
+MENU_VER="01.225.20260725235222"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -245,12 +245,54 @@ declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVI
 declare -A SECCOLOR=( [0]="$CY" [7]="$BL" [11]="$MG" [15]="$YL" [22]="$RD" )
 NUM=${#KEYS[@]}
 SEL=0
+SCROLL=0   # index of the first KEYS[] entry currently shown, when scrolled
+
+# Lines each menu row (or section header) actually occupies -- used to decide
+# how many items fit a short terminal and where to cut the scroll window.
+row_height() { [ -n "${SECBEFORE[$1]:-}" ] && echo 3 || echo 1; }   # sec() prints 2 lines + the item's own 1
 
 render() {
     printf '\033[H'          # cursor home — redraw in place (no clear = no flash)
     header
-    local i
-    for ((i=0; i<NUM; i++)); do
+    # Header's own printed line count -- rule + banner lines + 2 text lines + rule.
+    local header_lines=$(( 4 + $([ -n "$BANNER_TXT" ] && printf '%s\n' "$BANNER_TXT" | wc -l || echo 0) ))
+    local avail=$(( $(term_lines) - header_lines - 1 ))   # -1 for the pinned footer row
+    [ "$avail" -lt 3 ] && avail=3
+
+    local total=0 i
+    for ((i=0; i<NUM; i++)); do total=$((total + $(row_height "$i"))); done
+
+    local i start=0 end=$NUM
+    if [ "$total" -le "$avail" ]; then
+        SCROLL=0
+    else
+        # Keep the menu genuinely scrollable instead of just clipping the
+        # bottom off-screen -- terminals shorter than the full item list
+        # (common over a small SSH window, or a physical console at a small
+        # font) used to just lose whatever didn't fit with no way to reach
+        # it at all.
+        [ "$SEL" -lt "$SCROLL" ] && SCROLL=$SEL
+        local budget window_end fits
+        while :; do
+            budget=$((avail - 1))   # reserve 1 line for the "more above/below" indicator
+            [ "$SCROLL" -gt 0 ] && budget=$((budget - 1))   # and a second if there's also more above
+            local used=0 fits=0
+            for ((i=SCROLL; i<NUM; i++)); do
+                local h; h=$(row_height "$i")
+                [ $((used + h)) -gt "$budget" ] && break
+                used=$((used + h))
+                [ "$i" -eq "$SEL" ] && fits=1
+            done
+            window_end=$i
+            [ "$fits" -eq 1 ] || [ "$SCROLL" -ge "$SEL" ] && break
+            SCROLL=$((SCROLL + 1))
+        done
+        start=$SCROLL
+        end=$window_end
+        [ "$start" -gt 0 ] && printf "  ${DIM}▲ %d more above${R}${EL}\n" "$start"
+    fi
+
+    for ((i=start; i<end; i++)); do
         [ -n "${SECBEFORE[$i]:-}" ] && sec "${SECBEFORE[$i]}" "${SECCOLOR[$i]:-}"
         if [ "$i" -eq "$SEL" ]; then
             printf "${HL}${B}   %s  %-26s %-40s${EL}${R}\n" "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
@@ -258,6 +300,7 @@ render() {
             item "${KEYS[i]}" "${TITLES[i]}" "${DESCS[i]}"
         fi
     done
+    [ "$end" -lt "$NUM" ] && printf "  ${DIM}▼ %d more below${R}${EL}\n" "$((NUM - end))"
     printf '\033[J'                          # clear any stale content down to the old footer position
     printf '\033[%d;1H' "$(term_lines)"       # pin the hint bar to the terminal's LAST row
     printf "${EL} ${GR}↑/↓${R} ${DIM}move${R}   ${GR}Enter${R} ${DIM}select${R}   ${GR}Esc/q${R} ${DIM}quit${R}   ${DIM}or a letter${R} ${GR}❯${R} "
