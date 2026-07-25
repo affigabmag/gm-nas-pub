@@ -126,6 +126,7 @@ log "wifi-connect started, pid=$WC_PID"
 
 # Give it a moment then log the AP state so we can see if the portal is up.
 sleep 8
+log "-- AP diagnostics (t+8s) --"
 log "post-start device status: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
 log "post-start addresses: $(ip -brief a 2>/dev/null | tr '\n' ' ')"
 log "listening on :80? $(ss -ltnp 2>/dev/null | grep ':80 ' || echo none)"
@@ -136,6 +137,22 @@ log "wifi-connect alive? $(kill -0 "$WC_PID" 2>/dev/null && echo yes || echo NO-
 # "working" in the process-alive check above but means no phone will ever
 # see the network.
 log "iw mode check: $(iw dev "$WIFI_DEV" info 2>&1 | tr '\n' ' | ')"
+log "iw reg domain: $(iw reg get 2>&1 | tr '\n' ' | ')"
+log "rfkill (post-start): $(rfkill list 2>&1 | tr '\n' ' | ')"
+# IP + gateway on the AP interface itself -- if wifi-connect never assigned
+# its own 192.168.42.1, no phone can ever get a DHCP lease no matter how
+# good the radio/SSID broadcast is.
+log "AP interface IP: $(ip -4 -o addr show dev "$WIFI_DEV" 2>&1 | tr '\n' ' | ')"
+log "AP interface link state: $(ip link show dev "$WIFI_DEV" 2>&1 | tr '\n' ' | ')"
+# DHCP server (wifi-connect runs its own dnsmasq for the portal) -- if this
+# isn't running, a phone can associate to the SSID but never get an IP or
+# see the captive-portal redirect.
+log "dnsmasq process: $(pgrep -af dnsmasq 2>&1 || echo none)"
+log "dnsmasq listening (udp/67 DHCP, udp/53 DNS): $(ss -lunp 2>/dev/null | grep -E ':67 |:53 ' || echo none)"
+# Self-test the captive portal HTTP server from localhost -- confirms the
+# web server side works independent of anything WiFi/radio related.
+log "self-curl http://127.0.0.1/ -> $(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1/ 2>&1)"
+log "self-curl http://192.168.42.1/ -> $(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://192.168.42.1/ 2>&1)"
 
 log "watching for the user's WiFi selection (up to ~20 min)..."
 HB_LAST=0
@@ -151,7 +168,7 @@ for _ in $(seq 1 600); do
     HB_NOW="$(date +%s)"
     if [ $((HB_NOW - HB_LAST)) -ge 60 ]; then
         HB_LAST="$HB_NOW"
-        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station')"
+        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station') ip=$(ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | awk '{print $4}') dnsmasq=$(pgrep -x dnsmasq >/dev/null && echo up || echo DOWN) portal=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://192.168.42.1/ 2>/dev/null || echo unreachable)"
     fi
     NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
     if [ -n "$NEW" ]; then
