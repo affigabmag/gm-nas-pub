@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.214.20260725224838"   # bump when this menu changes
+MENU_VER="01.215.20260725225530"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -388,7 +388,13 @@ dispatch_action() {
                3) run_boxed "Install Tailscale" sudo bash -c \
                    "echo \"\$(date '+%F %T') [installs] starting: Tailscale\" >> $INSTALL_LOG
                    { curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo 'done -- run: sudo tailscale up'; } 2>&1 | tee -a $INSTALL_LOG" ;;
-               4) run_boxed "Install Cloudflare Tunnel" run_helper install-cloudflared ;;
+               4) # NOT run_boxed: dialog's --programbox has a fixed width and
+                  # TRUNCATES long unbreakable lines (like the Cloudflare login
+                  # URL) instead of wrapping them -- confirmed live, the URL got
+                  # cut off mid-way and was unusable. This is also interactive
+                  # (prompts for tunnel name/hostname), so plain terminal output
+                  # -- which wraps normally -- is the right fit here anyway.
+                  run_helper install-cloudflared; pause ;;
                5) run_boxed "Install btop" sudo bash -c \
                    "echo \"\$(date '+%F %T') [installs] starting: btop\" >> $INSTALL_LOG
                    { $APT_NI btop </dev/null && echo done.; } 2>&1 | tee -a $INSTALL_LOG" ;;
