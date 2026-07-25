@@ -100,6 +100,14 @@ ExecStart=
 ExecStart=-/sbin/agetty --noclear %I $TERM
 EOF
 systemctl daemon-reload 2>/dev/null || true
+# daemon-reload alone does NOT restart an already-running getty@tty1 -- it
+# only affects the NEXT time the unit starts. Confirmed live: a getty
+# session that started (with autologin) before this ran just kept running
+# with the old behavior, undoing this whole fix, until it finally rebooted
+# for some other reason. This box normally reboots moments after this
+# anyway, but if this script ever gets interrupted before that reboot
+# (confirmed happened live), the console is left exposed in the meantime.
+systemctl restart getty@tty1.service 2>/dev/null || true
 log "console autologin disabled -- tty1 now requires a real login"
 
 # --- Reset shares: drop our managed block from smb.conf, clear the list -----

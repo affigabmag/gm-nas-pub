@@ -31,6 +31,10 @@ ExecStart=
 ExecStart=-/sbin/agetty --noclear %I $TERM
 EOF
 systemctl daemon-reload 2>/dev/null || true
+# Same reasoning as factory-reset.sh: daemon-reload alone doesn't restart an
+# already-running getty@tty1 -- confirmed live that an autologin session
+# started before this ran just kept running until an unrelated reboot.
+systemctl restart getty@tty1.service 2>/dev/null || true
 log "console autologin disabled -- tty1 now requires a real login"
 
 log "stopping welcome app so wifi-connect can own port 80"
