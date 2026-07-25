@@ -129,19 +129,45 @@ fi
 echo
 read_or_abort TUNNEL_NAME "Tunnel name [gmnas001]: " "gmnas001"
 
-EXISTING_UUID="$(cloudflared tunnel list -o json 2>/dev/null \
-    | grep -o "\"id\":\"[a-f0-9-]*\",\"name\":\"$TUNNEL_NAME\"" | grep -o '^"id":"[a-f0-9-]*"' | cut -d'"' -f4)"
+# A hand-rolled grep against `tunnel list -o json` here previously failed to
+# match the real field order/format cloudflared actually emits -- confirmed
+# live: the tunnel was created successfully ("Created tunnel gmnas001 with id
+# ...") but the grep found nothing, so the script errored out right after a
+# real success. Parse with python3 (always present on this box) instead of
+# guessing at JSON via regex.
+tunnel_uuid_by_name() {
+    cloudflared tunnel list -o json 2>/dev/null | python3 -c "
+import json, sys
+name = sys.argv[1]
+try:
+    tunnels = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for t in tunnels:
+    if t.get('name') == name:
+        print(t.get('id', ''))
+        break
+" "$1"
+}
+
+EXISTING_UUID="$(tunnel_uuid_by_name "$TUNNEL_NAME")"
 if [ -n "$EXISTING_UUID" ]; then
     echo "Tunnel '$TUNNEL_NAME' already exists (uuid $EXISTING_UUID) -- reusing it."
     TUNNEL_UUID="$EXISTING_UUID"
 else
     echo "Creating tunnel '$TUNNEL_NAME'..."
-    if ! cloudflared tunnel create "$TUNNEL_NAME"; then
+    CREATE_OUT="$(cloudflared tunnel create "$TUNNEL_NAME" 2>&1)"
+    CREATE_RC=$?
+    echo "$CREATE_OUT"
+    if [ "$CREATE_RC" -ne 0 ]; then
         echo "ERROR: tunnel creation failed." >&2
         exit 1
     fi
-    TUNNEL_UUID="$(cloudflared tunnel list -o json 2>/dev/null \
-        | grep -o "\"id\":\"[a-f0-9-]*\",\"name\":\"$TUNNEL_NAME\"" | grep -o '^"id":"[a-f0-9-]*"' | cut -d'"' -f4)"
+    # cloudflared's own success line already states the UUID directly
+    # ("Created tunnel NAME with id UUID") -- read it from there first,
+    # falling back to the JSON lookup only if that line's format changes.
+    TUNNEL_UUID="$(printf '%s\n' "$CREATE_OUT" | grep -oE 'with id [a-f0-9-]+' | awk '{print $3}')"
+    [ -z "$TUNNEL_UUID" ] && TUNNEL_UUID="$(tunnel_uuid_by_name "$TUNNEL_NAME")"
 fi
 if [ -z "$TUNNEL_UUID" ]; then
     echo "ERROR: could not determine the tunnel's UUID after creation." >&2
