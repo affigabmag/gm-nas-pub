@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.164.20260725213122"   # bump when this menu changes
+MENU_VER="01.165.20260725214546"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -211,9 +211,10 @@ item() { printf "   ${B}${YL}%s${R}  ${WH}%-26s${R} ${DIM}%s${R}${EL}\n" "$1" "$
 sec()  { printf "${EL}\n %s${B}%s${R}${EL}\n" "${2:-$MG}" "$1"; }
 
 # --- data-driven, arrow-navigable menu --------------------------------------
-KEYS=(   a b c d e f z g x h w i j s u k t l m n v o r p q )
+KEYS=(   a b c d e f z g x h w i j y s u k t l m n v o r p q )
 TITLES=( "Device info" "Status / diag" "Setup log" "Install error log" "gm-nas logs" "System monitor" "Benchmark" \
          "Connect to WiFi" "Check internet" "First-time wizard" "Factory reset" "Web links" "Restart web svcs" \
+         "Installs" \
          "Web browser (lynx)" \
          "Auto-complete install" "Resume install (online)" \
          "Resume install (USB tether)" \
@@ -225,6 +226,7 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "join-wifi" "ping test: is the box online?" \
          "broadcast GMNas-Setup, set up from phone" \
          "wipe account+shares+WiFi, replay first boot" "Welcome / Cockpit / Terminal / Syncthing" "welcome + terminal" \
+         "(re)install Cockpit / ttyd / Tailscale individually" \
          "lynx, terminal browser" \
          "WiFi -> Resume install -> First-time wizard, one shot" \
          "download+install rest after WiFi (btop/samba/flask/cockpit/ttyd/welcome)" \
@@ -233,10 +235,10 @@ DESCS=(  "login summary: IP, links, services" "gm-debug" "the install/setup log"
          "same menu, everything inside dialog boxes" "shell as $(whoami)" \
          "restart the box" "shut down (needs power button)" "exit the menu" )
 declare -A SECBEFORE=( [0]="INFO & LOGS" [7]="NETWORK & SETUP" [11]="WEB & SERVICES" \
-                       [14]="INSTALL & UPDATE" [21]="SHELL & POWER" )
+                       [15]="INSTALL & UPDATE" [22]="SHELL & POWER" )
 # Each section header gets its own color instead of all five sharing one --
 # real variety, not just decoration.
-declare -A SECCOLOR=( [0]="$CY" [7]="$BL" [11]="$MG" [14]="$YL" [21]="$RD" )
+declare -A SECCOLOR=( [0]="$CY" [7]="$BL" [11]="$MG" [15]="$YL" [22]="$RD" )
 NUM=${#KEYS[@]}
 SEL=0
 
@@ -350,6 +352,20 @@ dispatch_action() {
            pause ;;
         i|I) run_boxed "Web links" act_i ;;
         j|J) run_boxed "Restart web svcs" sudo bash -c 'systemctl restart gmnas-welcome.service ttyd.service cockpit.socket 2>/dev/null; echo restarted.' ;;
+        y|Y) echo "Installs:"
+           echo "  1) Cockpit"
+           echo "  2) ttyd (browser terminal)"
+           echo "  3) Tailscale"
+           read -rp "Select [1-3, anything else cancels]: " isel
+           case "$isel" in
+               1) run_boxed "Install Cockpit" sudo bash -c \
+                   'apt-get install -y cockpit && systemctl enable --now cockpit.socket && echo done.' ;;
+               2) run_boxed "Install ttyd" sudo bash -c \
+                   'apt-get install -y ttyd && systemctl enable --now ttyd.service && echo done.' ;;
+               3) run_boxed "Install Tailscale" sudo bash -c \
+                   'curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo "done -- run: sudo tailscale up"' ;;
+               *) echo "Cancelled."; pause ;;
+           esac ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
                read -rp "URL [https://lite.duckduckgo.com/lite]: " u; u="${u:-https://lite.duckduckgo.com/lite}"
                lynx -display_charset=UTF-8 -assume_charset=UTF-8 "$u"
