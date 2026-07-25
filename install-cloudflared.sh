@@ -253,22 +253,29 @@ echo
 # get copy-pasted verbatim into someone else's terminal, and stray ANSI
 # escape sequences in pasted shell/PowerShell input would break it.
 echo "${YL}------------------------------------------------------------${R}"
-echo "${YL}${B}TO CONNECT FROM A REMOTE COMPUTER${R}${YL}, pick your OS below and copy"
-echo "the WHOLE block into a terminal there (PowerShell on Windows,"
-echo "any terminal on Linux/macOS). Nothing else to do -- it installs"
-echo "cloudflared if needed, sets up SSH, and connects.${R}"
+echo "${YL}${B}TO CONNECT FROM A REMOTE COMPUTER${R}${YL}: pick which OS you'll be"
+echo "connecting FROM, and this shows just the one block you need.${R}"
 echo "${YL}------------------------------------------------------------${R}"
-echo
-echo "${B}${CY}=== Windows (PowerShell) ===${R}"
-cat <<WINEOF
+echo "  1) Windows (PowerShell)"
+echo "  2) Linux / macOS (bash)"
+echo "  3) Show both"
+read_or_abort OS_CHOICE "Select [1-3, default 3]: " "3"
+echo "$(date '+%F %T') [install-cloudflared] connect-instructions OS choice: $OS_CHOICE" >> "$LOGDIR/install-cloudflared.log"
+
+if [ "$OS_CHOICE" = "1" ] || [ "$OS_CHOICE" = "3" ]; then
+    echo
+    echo "${B}${CY}=== Windows (PowerShell) ===${R}"
+    cat <<WINEOF
 winget install --id Cloudflare.cloudflared -e --silent
 if (-not (Test-Path "\$env:USERPROFILE\.ssh")) { New-Item -ItemType Directory "\$env:USERPROFILE\.ssh" | Out-Null }
 Add-Content "\$env:USERPROFILE\.ssh\config" "\`nHost $HOSTNAME\`n  ProxyCommand cloudflared access ssh --hostname %h\`n"
 ssh gmnas@$HOSTNAME
 WINEOF
-echo
-echo "${B}${CY}=== Linux / macOS (bash) ===${R}"
-cat <<NIXEOF
+fi
+if [ "$OS_CHOICE" = "2" ] || [ "$OS_CHOICE" = "3" ]; then
+    echo
+    echo "${B}${CY}=== Linux / macOS (bash) ===${R}"
+    cat <<NIXEOF
 command -v cloudflared >/dev/null 2>&1 || {
   if command -v brew >/dev/null 2>&1; then brew install cloudflared
   else
@@ -282,5 +289,6 @@ mkdir -p ~/.ssh
 printf '\nHost $HOSTNAME\n  ProxyCommand cloudflared access ssh --hostname %%h\n' >> ~/.ssh/config
 ssh gmnas@$HOSTNAME
 NIXEOF
+fi
 echo
 echo "${CY}============================================================${R}"
