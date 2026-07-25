@@ -5,7 +5,7 @@
 # ============================================================================
 export LANG=C.UTF-8   # so btop and box-drawing work
 
-MENU_VER="01.209.20260725223645"   # bump when this menu changes
+MENU_VER="01.210.20260725223815"   # bump when this menu changes
 
 # --- colors (htop/btop-ish); disabled automatically when not a terminal -----
 if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
@@ -357,7 +357,9 @@ dispatch_action() {
            echo "  2) ttyd (browser terminal)"
            echo "  3) Tailscale"
            echo "  4) Cloudflare Tunnel (remote SSH access)"
-           read -rp "Select [1-4, anything else cancels]: " isel
+           echo "  5) btop (system monitor)"
+           echo "  6) lynx (terminal browser)"
+           read -rp "Select [1-6, anything else cancels]: " isel
            case "$isel" in
                1) run_boxed "Install Cockpit" sudo bash -c \
                    'apt-get install -y cockpit && systemctl enable --now cockpit.socket && echo done.' ;;
@@ -366,6 +368,8 @@ dispatch_action() {
                3) run_boxed "Install Tailscale" sudo bash -c \
                    'curl -fsSL https://tailscale.com/install.sh | sh && systemctl enable --now tailscaled && echo "done -- run: sudo tailscale up"' ;;
                4) run_boxed "Install Cloudflare Tunnel" run_helper install-cloudflared ;;
+               5) run_boxed "Install btop" sudo bash -c 'apt-get install -y btop && echo done.' ;;
+               6) run_boxed "Install lynx" sudo bash -c 'apt-get install -y lynx && echo done.' ;;
                *) echo "Cancelled."; pause ;;
            esac ;;
         s|S) if command -v lynx >/dev/null 2>&1; then
