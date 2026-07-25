@@ -13,6 +13,16 @@
 # ============================================================================
 set -u
 
+# Capture BEFORE the tee redirect below replaces stdout with a pipe -- once
+# that happens, [ -t 1 ] inside this script always reads "not a terminal"
+# even when the real terminal on the other end of tee is one.
+if [ -t 1 ]; then
+    B=$'\e[1m'; R=$'\e[0m'
+    CY=$'\e[38;5;44m'; GR=$'\e[38;5;83m'; YL=$'\e[38;5;227m'; RD=$'\e[38;5;203m'
+else
+    B=; R=; CY=; GR=; YL=; RD=
+fi
+
 LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
 exec > >(tee -a "$LOGDIR/install-cloudflared.log") 2>&1
 echo "$(date '+%F %T') ===== install-cloudflared start ====="
@@ -227,10 +237,10 @@ systemctl enable --now cloudflared.service
 sleep 2
 
 echo
-echo "============================================================"
-echo "  Cloudflare Tunnel is live: $HOSTNAME"
-echo "============================================================"
-echo "  Tunnel name : $TUNNEL_NAME"
+echo "${CY}============================================================${R}"
+echo "${CY}  Cloudflare Tunnel is live: ${B}${GR}$HOSTNAME${R}"
+echo "${CY}============================================================${R}"
+echo "  Tunnel name : ${GR}$TUNNEL_NAME${R}"
 echo "  Status      : sudo systemctl status cloudflared"
 echo "  Logs        : sudo journalctl -u cloudflared -f"
 echo
@@ -239,14 +249,17 @@ echo
 # user picks their OS once and copies ONE thing into their terminal that
 # installs cloudflared (if needed), wires up SSH config, and connects, all
 # in one go. No separate "now edit this file" step to get wrong.
-echo "------------------------------------------------------------"
-echo "TO CONNECT FROM A REMOTE COMPUTER, pick your OS below and copy"
+# NOTE: no color codes inside the actual heredoc code blocks below -- those
+# get copy-pasted verbatim into someone else's terminal, and stray ANSI
+# escape sequences in pasted shell/PowerShell input would break it.
+echo "${YL}------------------------------------------------------------${R}"
+echo "${YL}${B}TO CONNECT FROM A REMOTE COMPUTER${R}${YL}, pick your OS below and copy"
 echo "the WHOLE block into a terminal there (PowerShell on Windows,"
 echo "any terminal on Linux/macOS). Nothing else to do -- it installs"
-echo "cloudflared if needed, sets up SSH, and connects."
-echo "------------------------------------------------------------"
+echo "cloudflared if needed, sets up SSH, and connects.${R}"
+echo "${YL}------------------------------------------------------------${R}"
 echo
-echo "=== Windows (PowerShell) ==="
+echo "${B}${CY}=== Windows (PowerShell) ===${R}"
 cat <<WINEOF
 winget install --id Cloudflare.cloudflared -e --silent
 if (-not (Test-Path "\$env:USERPROFILE\.ssh")) { New-Item -ItemType Directory "\$env:USERPROFILE\.ssh" | Out-Null }
@@ -254,7 +267,7 @@ Add-Content "\$env:USERPROFILE\.ssh\config" "\`nHost $HOSTNAME\`n  ProxyCommand 
 ssh gmnas@$HOSTNAME
 WINEOF
 echo
-echo "=== Linux / macOS (bash) ==="
+echo "${B}${CY}=== Linux / macOS (bash) ===${R}"
 cat <<NIXEOF
 command -v cloudflared >/dev/null 2>&1 || {
   if command -v brew >/dev/null 2>&1; then brew install cloudflared
@@ -270,4 +283,4 @@ printf '\nHost $HOSTNAME\n  ProxyCommand cloudflared access ssh --hostname %%h\n
 ssh gmnas@$HOSTNAME
 NIXEOF
 echo
-echo "============================================================"
+echo "${CY}============================================================${R}"
