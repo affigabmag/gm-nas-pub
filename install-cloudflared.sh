@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================================
-# gm-nas — install Cloudflare Tunnel for remote SSH access, no Cloudflare
-# account or domain required (uses a Cloudflare "quick tunnel").
+# gm-nas — set up a PERSISTENT, NAMED Cloudflare Tunnel for remote SSH access
+# under your own domain (e.g. gmnas001.your-domain.com). This requires a
+# Cloudflare account with that domain already added as a zone.
 #
-# Installs cloudflared, runs it as a persistent systemd service tunneling
-# this box's SSH port (22) out through Cloudflare's network, then prints the
-# exact steps to connect from anywhere.
-#
-# NOTE: a quick-tunnel hostname is temporary -- it changes every time the
-# service (re)starts. Re-run this (menu: Installs -> Cloudflare Tunnel) any
-# time to see the CURRENT hostname; it's also always in the service log.
+# Interactive: it walks you through `cloudflared tunnel login` (opens a URL
+# you open in ANY browser, on any device, to authorize this box), asks for a
+# tunnel name and the hostname to expose, creates the tunnel + DNS record,
+# and installs it as a systemd service so it survives reboots.
 #
 # Run on the mini PC:   sudo bash install-cloudflared.sh
 # ============================================================================
 set -u
 
-LOGDIR=/var/log/gm-nas; LOGF="$LOGDIR/cloudflared.log"; mkdir -p "$LOGDIR" 2>/dev/null || true
-log() { printf '%s [cloudflared] %s\n' "$(date '+%F %T')" "$*"; }
+CFG_DIR=/etc/cloudflared
+CERT="/root/.cloudflared/cert.pem"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Please run with sudo:  sudo bash install-cloudflared.sh" >&2
@@ -24,61 +22,108 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if ! command -v cloudflared >/dev/null 2>&1; then
-    log "downloading cloudflared..."
+    echo "== installing cloudflared =="
     ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
     curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb" \
         -o /tmp/cloudflared.deb
     dpkg -i /tmp/cloudflared.deb 2>/dev/null || apt-get install -f -y
     rm -f /tmp/cloudflared.deb
 fi
-
 if ! command -v cloudflared >/dev/null 2>&1; then
     echo "ERROR: cloudflared install failed." >&2
     exit 1
 fi
-log "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
+echo "cloudflared installed: $(cloudflared --version 2>&1 | head -1)"
 
-cat > /etc/systemd/system/cloudflared-ssh.service <<'EOF'
-[Unit]
-Description=gm-nas remote SSH access via Cloudflare Tunnel (quick tunnel)
-After=network-online.target
-Wants=network-online.target
+# --- 1) Log in to your Cloudflare account (one-time) -----------------------
+if [ -f "$CERT" ]; then
+    echo
+    echo "Already logged in (found $CERT)."
+    read -rp "Log in again with a different account? [y/N]: " relogin
+    [ "$relogin" = "y" ] || [ "$relogin" = "Y" ] && rm -f "$CERT"
+fi
+if [ ! -f "$CERT" ]; then
+    echo
+    echo "============================================================"
+    echo "  STEP 1: authorize this box on your Cloudflare account."
+    echo "  cloudflared will print a URL below -- open it in ANY"
+    echo "  browser, on ANY device (your phone is fine), log in to"
+    echo "  Cloudflare, and pick the domain you want to use."
+    echo "============================================================"
+    cloudflared tunnel login
+    if [ ! -f "$CERT" ]; then
+        echo "ERROR: login did not complete (no $CERT found). Aborting." >&2
+        exit 1
+    fi
+    echo "Login successful."
+fi
 
-[Service]
-ExecStart=/usr/bin/cloudflared tunnel --url tcp://localhost:22 --logfile /var/log/gm-nas/cloudflared.log
-Restart=always
-RestartSec=5
+# --- 2) Name the tunnel -----------------------------------------------------
+echo
+read -rp "Tunnel name [gmnas001]: " TUNNEL_NAME
+TUNNEL_NAME="${TUNNEL_NAME:-gmnas001}"
 
-[Install]
-WantedBy=multi-user.target
+EXISTING_UUID="$(cloudflared tunnel list -o json 2>/dev/null \
+    | grep -o "\"id\":\"[a-f0-9-]*\",\"name\":\"$TUNNEL_NAME\"" | grep -o '^"id":"[a-f0-9-]*"' | cut -d'"' -f4)"
+if [ -n "$EXISTING_UUID" ]; then
+    echo "Tunnel '$TUNNEL_NAME' already exists (uuid $EXISTING_UUID) -- reusing it."
+    TUNNEL_UUID="$EXISTING_UUID"
+else
+    echo "Creating tunnel '$TUNNEL_NAME'..."
+    if ! cloudflared tunnel create "$TUNNEL_NAME"; then
+        echo "ERROR: tunnel creation failed." >&2
+        exit 1
+    fi
+    TUNNEL_UUID="$(cloudflared tunnel list -o json 2>/dev/null \
+        | grep -o "\"id\":\"[a-f0-9-]*\",\"name\":\"$TUNNEL_NAME\"" | grep -o '^"id":"[a-f0-9-]*"' | cut -d'"' -f4)"
+fi
+if [ -z "$TUNNEL_UUID" ]; then
+    echo "ERROR: could not determine the tunnel's UUID after creation." >&2
+    exit 1
+fi
+CRED_FILE="/root/.cloudflared/${TUNNEL_UUID}.json"
+
+# --- 3) Hostname to expose ---------------------------------------------------
+echo
+echo "Example: gmnas001.your-domain.com (must be on a domain already added"
+echo "to your Cloudflare account)."
+read -rp "Full hostname for this box: " HOSTNAME
+if [ -z "$HOSTNAME" ]; then
+    echo "ERROR: a hostname is required." >&2
+    exit 1
+fi
+
+echo "Routing $HOSTNAME -> tunnel '$TUNNEL_NAME'..."
+if ! cloudflared tunnel route dns "$TUNNEL_NAME" "$HOSTNAME"; then
+    echo "ERROR: DNS routing failed (hostname already used elsewhere, or the" >&2
+    echo "domain isn't on this Cloudflare account)." >&2
+    exit 1
+fi
+
+# --- 4) Config + persistent service -----------------------------------------
+mkdir -p "$CFG_DIR"
+cat > "$CFG_DIR/config.yml" <<EOF
+tunnel: $TUNNEL_UUID
+credentials-file: $CRED_FILE
+
+ingress:
+  - hostname: $HOSTNAME
+    service: ssh://localhost:22
+  - service: http_status:404
 EOF
 
+cloudflared service install >/dev/null 2>&1 || true
 systemctl daemon-reload
-systemctl enable --now cloudflared-ssh.service
-log "cloudflared-ssh.service enabled + started"
-
-# Give it a few seconds to connect and log its assigned hostname.
-HOST=""
-for _ in $(seq 1 10); do
-    HOST="$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' "$LOGF" 2>/dev/null | tail -1)"
-    [ -n "$HOST" ] && break
-    sleep 2
-done
-HOST="${HOST#https://}"
+systemctl enable --now cloudflared.service
+sleep 2
 
 echo
 echo "============================================================"
-echo "  Cloudflare Tunnel is running."
+echo "  Cloudflare Tunnel is live: $HOSTNAME"
 echo "============================================================"
-if [ -n "$HOST" ]; then
-    echo "  Your remote-access hostname:  $HOST"
-else
-    echo "  Hostname not detected yet -- check:  sudo tail -f $LOGF"
-fi
-echo
-echo "  This hostname is TEMPORARY: it changes if the box reboots or"
-echo "  the service restarts. Come back to this menu (Installs ->"
-echo "  Cloudflare Tunnel) any time to see the current one."
+echo "  Tunnel name : $TUNNEL_NAME"
+echo "  Status      : sudo systemctl status cloudflared"
+echo "  Logs        : sudo journalctl -u cloudflared -f"
 echo
 echo "  ------------------------------------------------------------"
 echo "  TO CONNECT FROM ANY REMOTE COMPUTER:"
@@ -86,10 +131,10 @@ echo "  ------------------------------------------------------------"
 echo "  1) Install cloudflared on that computer (one-time):"
 echo "     https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
 echo
-echo "  2) On that computer, open a terminal and run:"
-echo "     cloudflared access tcp --hostname $HOST --url localhost:2222"
-echo "     (leave this window running)"
+echo "  2) Add this to that computer's ~/.ssh/config:"
+echo "       Host $HOSTNAME"
+echo "         ProxyCommand cloudflared access ssh --hostname %h"
 echo
-echo "  3) In a SECOND terminal on that computer, run:"
-echo "     ssh -p 2222 gmnas@localhost"
+echo "  3) Then just:"
+echo "     ssh gmnas@$HOSTNAME"
 echo "============================================================"
