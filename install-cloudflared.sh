@@ -79,9 +79,14 @@ if [ ! -f "$CERT" ]; then
     echo
     echo "============================================================"
     echo "  STEP 1: authorize this box on your Cloudflare account."
-    echo "  cloudflared will print a URL below -- open it in ANY"
-    echo "  browser, on ANY device (your phone is fine), log in to"
-    echo "  Cloudflare, and pick the domain you want to use."
+    echo "  cloudflared will print a URL below -- copy the FULL link"
+    echo "  (it's long) into any browser, on any device. Log in if"
+    echo "  asked, then look for a page that asks you to pick a"
+    echo "  zone/domain and AUTHORIZE this specific request -- just"
+    echo "  landing on your normal Cloudflare dashboard is NOT enough,"
+    echo "  that means the link wasn't opened (or got cut short)."
+    echo "  Once authorized, this terminal continues on its own within"
+    echo "  a few seconds -- nothing else to do here."
     echo "  (Ctrl+C here cancels the whole setup.)"
     echo "============================================================"
     cloudflared tunnel login
