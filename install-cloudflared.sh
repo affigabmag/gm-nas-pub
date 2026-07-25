@@ -87,9 +87,37 @@ if [ ! -f "$CERT" ]; then
     echo "  that means the link wasn't opened (or got cut short)."
     echo "  Once authorized, this terminal continues on its own within"
     echo "  a few seconds -- nothing else to do here."
-    echo "  (Ctrl+C here cancels the whole setup.)"
+    echo "  If you need to copy the URL: select it, then right-click ->"
+    echo "  Copy. Ctrl+C in a terminal does NOT copy -- it sends an"
+    echo "  interrupt instead (this is exactly what pauses below)."
     echo "============================================================"
-    cloudflared tunnel login
+    # A single accidental Ctrl+C (someone reflexively copying the URL the
+    # normal way) used to cancel the whole setup outright -- confirmed
+    # live, that's exactly what happened on a real run. Now it just asks
+    # whether you meant it, and if not, prints a fresh login link and
+    # keeps waiting instead of throwing away everything so far.
+    login_interrupted() {
+        echo
+        echo "Ctrl+C caught. If that was an attempt to COPY the URL above,"
+        echo "it cancelled the wait instead -- use right-click -> Copy, not Ctrl+C."
+        read -rp "Really abort the whole setup? [y/N]: " really
+        case "$(printf '%s' "$really" | tr '[:upper:]' '[:lower:]')" in
+            y|yes) trap abort INT TERM; abort ;;
+            *) echo "Continuing -- starting a fresh login link..." ;;
+        esac
+    }
+    trap login_interrupted INT
+    login_tries=0
+    until [ -f "$CERT" ]; do
+        login_tries=$((login_tries + 1))
+        if [ "$login_tries" -gt 10 ]; then
+            echo "ERROR: login still hasn't completed after $login_tries attempts. Aborting." >&2
+            trap abort INT TERM
+            exit 1
+        fi
+        cloudflared tunnel login
+    done
+    trap abort INT TERM
     if [ ! -f "$CERT" ]; then
         echo "ERROR: login did not complete (no $CERT found). Aborting." >&2
         exit 1
