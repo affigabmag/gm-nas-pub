@@ -84,11 +84,13 @@ rm -f "$FLAG" 2>/dev/null || true
 # The welcome app may have already grabbed :80 on a stale flag — free it so
 # wifi-connect's captive portal can bind.
 systemctl stop gmnas-welcome.service 2>/dev/null || true
-# NOTE: the setup-mode /etc/issue banner is written further down, only once
-# the AP is CONFIRMED actually up with 192.168.42.1 -- writing it here would
-# tell someone at the console to connect to GMNas-Setup before the radio has
-# necessarily finished the transition, which can take several seconds and
-# occasionally needs a restart to actually take (see below).
+# The REAL setup-mode banner is written further down, only once the AP is
+# CONFIRMED up with 192.168.42.1 -- but the console's getty starts almost
+# immediately at boot, well before that confirmation (which can take
+# 20-40s with retries). Without SOMETHING written here, whoever looks at
+# the screen in that window sees stale leftover info from before this
+# reset (confirmed live). A visibly-in-progress banner now, finalized later.
+bash /usr/local/sbin/update-issue.sh pending 2>/dev/null || true
 
 # Retry, don't fail once: on a cold power-on (as opposed to a warm reboot),
 # the WiFi driver/firmware can genuinely still be loading when this service

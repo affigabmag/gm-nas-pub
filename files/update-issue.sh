@@ -8,6 +8,24 @@
 # ============================================================================
 set -u
 
+# Optional: "pending" writes a transitional banner (AP still stabilizing)
+# instead of the real setup-mode instructions. Without this, the console's
+# already-running getty (started at boot, before the AP stabilization
+# retries finish) kept showing whatever banner was there BEFORE this reset
+# -- confirmed live: stale "online" info from the old network, for the
+# whole ~20-40s the AP takes to come up. A visibly-in-progress message
+# during that window beats a flatly wrong one.
+if [ "${1:-}" = "pending" ]; then
+    cat > /etc/issue <<'EOF'
+============================================================
+  gm-nas -- switching to SETUP MODE, please wait...
+============================================================
+
+EOF
+    systemctl restart getty@tty1.service 2>/dev/null || true
+    exit 0
+fi
+
 if [ ! -f /etc/homenas/provisioned ]; then
     cat > /etc/issue <<'EOF'
 ============================================================
@@ -31,3 +49,9 @@ else
 
 EOF
 fi
+
+# Force the console to actually show this right away -- agetty only
+# re-reads /etc/issue when its own process (re)starts, not on every failed
+# login attempt at an already-running prompt. Without this, a getty that
+# started earlier keeps displaying whatever was there when IT started.
+systemctl restart getty@tty1.service 2>/dev/null || true
