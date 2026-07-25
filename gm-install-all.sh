@@ -25,6 +25,20 @@ LOGDIR=/var/log/gm-nas; mkdir -p "$LOGDIR" 2>/dev/null || true
 # afterward inherits the "sudo" group automatically.
 chown root:sudo "$LOGDIR" 2>/dev/null || true
 chmod 2775 "$LOGDIR" 2>/dev/null || true
+
+# -- Hide the GRUB menu on boot/reboot -- this is a single-purpose consumer
+# appliance, not a dev box someone needs to pick a kernel on. Set once here
+# so it applies on every fresh install / Resume install run.
+if [ -f /etc/default/grub ]; then
+    sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
+    grep -q '^GRUB_TIMEOUT=' /etc/default/grub || echo 'GRUB_TIMEOUT=0' >> /etc/default/grub
+    if grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub; then
+        sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub
+    else
+        echo 'GRUB_TIMEOUT_STYLE=hidden' >> /etc/default/grub
+    fi
+    update-grub >/dev/null 2>&1 || true
+fi
 exec > >(tee -a "$LOGDIR/gm-install-all.log") 2>&1
 echo "$(date '+%F %T') ===== gm-install-all (resume) start ====="
 
