@@ -124,6 +124,23 @@ log "launching wifi-connect (AP '$PORTAL_SSID', portal on :80, interface $WIFI_D
 WC_PID=$!
 log "wifi-connect started, pid=$WC_PID"
 
+# Background: log every WiFi association/disassociation event straight from
+# the driver, independent of DHCP/HTTP/dnsmasq. This is the one thing that
+# definitively answers "did a phone even try to join the AP at all" --
+# closing the one real blind spot: a phone can associate perfectly, get an
+# IP, reach the portal, and STILL never trigger its own captive-portal
+# popup (an OS-level client quirk, not something this box can see). If
+# THIS log shows a MAC associating, the box did its job; anything after
+# that point that still fails is on the phone's side, not ours.
+(iw event 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+        *"new station"*|*"del station"*|*connected*|*disconnected*)
+            log "iw-event: $line" ;;
+    esac
+done) &
+IWEVENT_PID=$!
+trap 'kill "$IWEVENT_PID" 2>/dev/null || true' EXIT
+
 # Give it a moment then log the AP state so we can see if the portal is up.
 sleep 8
 log "-- AP diagnostics (t+8s) --"
@@ -149,6 +166,11 @@ log "AP interface link state: $(ip link show dev "$WIFI_DEV" 2>&1 | tr '\n' ' | 
 # see the captive-portal redirect.
 log "dnsmasq process: $(pgrep -af dnsmasq 2>&1 || echo none)"
 log "dnsmasq listening (udp/67 DHCP, udp/53 DNS): $(ss -lunp 2>/dev/null | grep -E ':67 |:53 ' || echo none)"
+# Find wifi-connect's own DHCP lease file wherever it put it -- a lease
+# actually appearing here is direct proof a phone associated AND completed
+# DHCP, i.e. everything on the box's side worked.
+DHCP_LEASE_FILE="$(find /var/lib/misc /run /tmp -maxdepth 3 -iname '*dnsmasq*leases*' 2>/dev/null | head -1)"
+log "dnsmasq lease file: ${DHCP_LEASE_FILE:-not found}"
 # Self-test the captive portal HTTP server from localhost -- confirms the
 # web server side works independent of anything WiFi/radio related.
 log "self-curl http://127.0.0.1/ -> $(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1/ 2>&1)"
@@ -168,7 +190,9 @@ for _ in $(seq 1 600); do
     HB_NOW="$(date +%s)"
     if [ $((HB_NOW - HB_LAST)) -ge 60 ]; then
         HB_LAST="$HB_NOW"
-        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station') ip=$(ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | awk '{print $4}') dnsmasq=$(pgrep -x dnsmasq >/dev/null && echo up || echo DOWN) portal=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://192.168.42.1/ 2>/dev/null || echo unreachable)"
+        HB_LEASES=""
+        [ -n "$DHCP_LEASE_FILE" ] && HB_LEASES="$(cat "$DHCP_LEASE_FILE" 2>/dev/null | tr '\n' ' | ')"
+        log "heartbeat: AP proc alive, mode=$(iw dev "$WIFI_DEV" info 2>/dev/null | awk '/type/{print $2}') clients=$(iw dev "$WIFI_DEV" station dump 2>/dev/null | grep -c '^Station') ip=$(ip -4 -o addr show dev "$WIFI_DEV" 2>/dev/null | awk '{print $4}') dnsmasq=$(pgrep -x dnsmasq >/dev/null && echo up || echo DOWN) portal=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://192.168.42.1/ 2>/dev/null || echo unreachable) leases=[${HB_LEASES:-none}]"
     fi
     NEW="$(comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$(wifi_profiles)"))"
     if [ -n "$NEW" ]; then
