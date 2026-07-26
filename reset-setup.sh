@@ -31,10 +31,12 @@ ExecStart=
 ExecStart=-/sbin/agetty --noclear %I $TERM
 EOF
 systemctl daemon-reload 2>/dev/null || true
-# Same reasoning as factory-reset.sh: daemon-reload alone doesn't restart an
-# already-running getty@tty1 -- confirmed live that an autologin session
-# started before this ran just kept running until an unrelated reboot.
-systemctl restart getty@tty1.service 2>/dev/null || true
+# NOT restarting getty@tty1 here at all -- confirmed live (twice, both a
+# synchronous restart and a delayed detached one) that it kills THIS script,
+# since it runs on tty1 itself. This flow doesn't reboot on its own the way
+# factory-reset does, so the override.conf change here takes effect on
+# whatever the NEXT actual reboot/getty restart is (including the one
+# factory-reset.sh performs, or a manual reboot).
 log "console autologin disabled -- tty1 now requires a real login"
 
 log "stopping welcome app so wifi-connect can own port 80"

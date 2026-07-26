@@ -51,9 +51,28 @@ Never commit passwords, password hashes, Tailscale authkeys, or private keys her
 | `gm-benchmark.sh` | Quick CPU/RAM/disk score ("Windows/Linux Experience Index" style) |
 | `reset-setup.sh`, `factory-reset.sh` | Replay the first-boot WiFi/wizard flow (reset-setup keeps the account+shares; factory-reset wipes them too) |
 | `save-fail-log.sh` | Run from a shell during a **failed** offline install (before it retries) — saves `/var/log/installer`, `journalctl`, `dmesg` onto the Ventoy USB, since the installer's own logs live in the wiped-every-attempt live environment |
+| `install-cloudflared.sh` | Sets up a persistent, named Cloudflare Tunnel for remote SSH access (menu: Installs → Cloudflare Tunnel) |
 | `ui/` | The `GMNas-Setup` captive-portal WiFi setup page (served by `wifi-connect`) |
 | `welcome/app.py` | Post-setup web app: admin account, Samba shares, Cockpit/Tailscale/Syncthing installs |
+| `files/firstboot-wifi.sh` | First-boot WiFi/AP provisioning wrapper — retries WiFi-device detection and AP stabilization instead of a single fixed wait, extensive diagnostics for "couldn't connect to GMNas-Setup" reports |
+| `files/update-issue.sh` | Writes `/etc/issue` (the console's pre-login banner) — setup-mode/AP instructions or online host+IP+version, shown before any login prompt |
 | `files/` | systemd unit files fetched by `gm-install-all.sh` |
+
+## Remote access
+
+The `Installs` menu (key `y`) can set up a persistent Cloudflare Tunnel
+(`install-cloudflared.sh`) for SSH access from anywhere, under your own
+domain — no port-forwarding, survives factory reset untouched. `w`
+(Factory reset) and `h` (First-time wizard) both offer to set this up
+beforehand, since it needs internet and none exists during the AP-mode
+window itself.
+
+## Console security
+
+A physical console session always requires a real login — there is no
+autologin bypass, including immediately after a factory reset or the
+first-time wizard. This is enforced by both `factory-reset.sh` and
+`reset-setup.sh` (matching `welcome/app.py`'s `disable_console_autologin`).
 
 ## Full docs
 
