@@ -58,10 +58,39 @@ nmcli -t -f NAME,TYPE connection show 2>/dev/null \
     | while read -r c; do
         [ -n "$c" ] && { nmcli connection delete "$c" 2>/dev/null && log "  deleted saved WiFi profile: $c"; }
       done
+# nmcli connection delete only removes NetworkManager's own copy -- netplan
+# keeps a mirrored YAML (e.g. 9x-NM-<uuid>.yaml) for any NM-managed wifi
+# connection and replays it, silently reconnecting to the "deleted" network.
+# factory-reset.sh has always stripped these; this script did NOT, and that
+# was the whole bug: confirmed live 2026-08-05, the box rejoined home WiFi
+# ~10s after this script finished, so homenas-firstboot logged "WiFi is UP ->
+# normal boot (mark provisioned), no wizard" and the GMNas-Setup AP never
+# appeared -- while the menu still showed "setup mode" from the cleared flag.
+# Never touches 01-gmnas-net.yaml (ethernet/usb-tether only, no wifis: key).
+for f in /etc/netplan/*-NM-*.yaml; do
+    if [ -f "$f" ] && grep -q '^[[:space:]]*wifis:' "$f"; then
+        rm -f "$f"
+        log "  removed stale netplan WiFi profile: $f"
+    fi
+done
+# The flag was cleared at the top, but NM may have re-marked the box
+# provisioned in between (see above) -- clear it again, now that nothing can
+# bring the old network back.
+rm -f /etc/homenas/provisioned
 
-log "restarting first-boot setup service (launches GMNas-Setup AP)"
-systemctl restart homenas-firstboot.service 2>/dev/null || true
-sleep 2
-log "homenas-firstboot state: $(systemctl is-active homenas-firstboot.service 2>/dev/null)"
-log "done — connect a phone to WiFi 'GMNas-Setup', browse http://192.168.42.1"
+log "done — rebooting now; homenas-firstboot launches GMNas-Setup AP on boot"
+log "connect a phone to WiFi 'GMNas-Setup', browse http://192.168.42.1"
 log "(follow the AP flow in /var/log/gm-nas/firstboot-wifi.log)"
+# Reboot instead of just restarting homenas-firstboot in place, matching
+# factory-reset.sh. Restarting the service worked, but left the box in a
+# half-state the rest of the system doesn't expect:
+#   - gmnas-welcome stays dead until the NEXT boot regardless, because its
+#     ConditionPathExists=/etc/homenas/provisioned is only evaluated at boot;
+#   - the getty override written above (console autologin off) also only takes
+#     effect on the next getty restart, which this now guarantees;
+#   - a clean boot re-runs the AP flow from exactly the same state a real
+#     first boot has, instead of from whatever the previous session left
+#     behind (leftover dnsmasq, stale routes, docker bridges already up).
+# firstboot then finds no saved WiFi and raises the AP itself.
+sleep 2
+systemctl reboot
