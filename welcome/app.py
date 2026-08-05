@@ -233,6 +233,45 @@ PAGE = """<!doctype html>
      <form class="inline" method="post" action="/install/cockpit"><button>Install</button></form>
    {% endif %}
   </div>
+  <!-- Immich: photos/videos. Installed outside this app (Docker stack), so
+       there is no Install button -- only a probed state and the links. -->
+  <div class="app">
+   <span class="name">Photos</span>
+   <span class="grow"><span class="desc">Immich — your photos &amp; videos, private</span></span>
+   {% if immich == 'ready' %}
+   <a class="linkbtn svclink" data-proto="http" data-port="{{ immich_port }}"
+      href="http://{{ host }}:{{ immich_port }}" target="_blank">Open ↗</a>
+   {% else %}<span class="badge b-busy">Starting…</span>
+   {% endif %}
+  </div>
+  {% if immich == 'ready' %}
+  <p class="hint">At home, open <b>Photos</b> above.
+   {% if immich_url %}Away from home, use <b>{{ immich_url }}</b> — works on mobile data,
+   anywhere.{% endif %}</p>
+  {% if immich_url %}
+  <a class="linkbtn" href="{{ immich_url }}" target="_blank">Open Photos from anywhere ↗</a>
+  {% endif %}
+  <div class="links" style="align-items:center;gap:14px">
+   <div>
+    <a href="https://play.google.com/store/apps/details?id=app.alextran.immich" target="_blank"
+       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+      <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+           alt="Get Immich on Google Play" height="52" style="max-width:100%"></a>
+    <p class="hint" style="text-align:center;margin-top:4px">Android: <b>Immich</b></p>
+   </div>
+   <div>
+    <a href="https://apps.apple.com/us/app/immich/id1613945652" target="_blank"
+       style="background:none;border:none;padding:0;display:flex;align-items:center;justify-content:center">
+      <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83"
+           alt="Get Immich on the App Store" height="40" style="max-width:100%"></a>
+    <p class="hint" style="text-align:center;margin-top:4px">iPhone: <b>Immich</b></p>
+   </div>
+  </div>
+  <p class="hint">In the phone app, the <b>Server Endpoint URL</b> is
+   {% if immich_url %}<b>{{ immich_url }}/api</b> (use this one — it keeps working away
+   from home){% else %}<b>http://{{ ip or host }}:{{ immich_port }}/api</b>{% endif %}.
+   Sign in with the account you create on that page.</p>
+  {% endif %}
   <!-- Tailscale: on-demand install, then connect for a login link -->
   <div class="app">
    <span class="name">Tailscale</span>
@@ -1158,6 +1197,47 @@ def syncthing_state():
     return "busy" if is_installing("setup") else "off"
 
 
+# --- Immich ---------------------------------------------------------------
+# Immich is NOT installed by this app (it's a Docker stack set up on the box
+# separately) -- so its state is probed, not tracked. "ready" means the server
+# is actually answering on :2283, which is the only thing the end user cares
+# about: is there a photos app to open or not.
+IMMICH_PORT = 2283
+IMMICH_URL_FILE = "/etc/homenas/immich-public-url"
+
+
+def immich_state():
+    """ready = the Immich server answers on localhost:2283; off = not there.
+
+    Probed with a plain socket connect rather than an HTTP request: this runs
+    on every page render, and Immich's own /api/server/ping can be slow while
+    the stack is still starting -- a 0.4s connect check can't stall the page.
+    """
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", IMMICH_PORT), timeout=0.4):
+            return "ready"
+    except OSError:
+        return "off"
+
+
+def immich_public_url():
+    """Per-unit public URL (a Cloudflare Tunnel hostname), or "" if none.
+
+    Deliberately read from a file instead of hardcoded: every box gets its own
+    hostname, and this app lives in a PUBLIC repo -- baking one customer's
+    hostname into the source would ship it to every other unit.
+    """
+    try:
+        with open(IMMICH_URL_FILE) as f:
+            url = f.read().strip()
+    except OSError:
+        return ""
+    if not re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?", url):
+        return ""
+    return url
+
+
 def syncthing_device_id(user):
     """The box's Syncthing Device ID, without needing the GUI/login at all --
     `syncthing --device-id` derives it straight from the cert on disk (no
@@ -1679,6 +1759,7 @@ def index():
         shares=load_shares(), samba=samba_installed(), folders=available_folders(),
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale, syncthing=syncthing,
+        immich=immich_state(), immich_port=IMMICH_PORT, immich_url=immich_public_url(),
         syncthing_device_id=(syncthing_device_id(admin_username()) if syncthing == "ready" else ""),
         qr_cache_bust=int(time.time()),
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),
