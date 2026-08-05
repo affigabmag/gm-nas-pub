@@ -279,7 +279,9 @@ PAGE = """<!doctype html>
    {% if tailscale == 'up' %}<span class="badge b-ok">Connected</span>
    {% elif ts_login_url %}<span class="badge b-busy">Waiting for sign-in ↓</span>
    {% elif tailscale == 'ready' %}
-     <form class="inline" method="post" action="/tailscale/up"><button>Connect</button></form>
+     <!-- Installed: the Install button becomes Open, which starts Tailscale and
+          surfaces the one-time sign-in link below. -->
+     <form class="inline" method="post" action="/tailscale/up"><button>Open</button></form>
    {% elif tailscale == 'busy' %}<span class="badge b-busy">Installing…</span>
    {% else %}
      <form class="inline" method="post" action="/install/tailscale"><button>Install</button></form>
@@ -1167,7 +1169,7 @@ def cockpit_state():
 
 def tailscale_state():
     if not shutil.which("tailscale"):
-        return "busy" if is_installing("setup") else "off"
+        return "busy" if is_installing("tailscale") else "off"
     # Installed — is THIS node still a live member of the tailnet?
     #
     # We can't trust BackendState alone: a node that was DELETED from the
@@ -1194,7 +1196,7 @@ def tailscale_state():
 def syncthing_state():
     if shutil.which("syncthing"):
         return "ready"
-    return "busy" if is_installing("setup") else "off"
+    return "busy" if is_installing("syncthing") else "off"
 
 
 # --- Immich ---------------------------------------------------------------
@@ -1719,36 +1721,53 @@ def syncthing_cmd(user):
         f"systemctl stop syncthing@{user}.service; "
         f"[ -f \"{conf}\" ] && python3 -c \"{patch_py_escaped}\"; "
         f"systemctl start syncthing@{user}.service")
-# ONE ordered chain (Cockpit -> terminal -> Tailscale -> sign-in link). Runs
-# under a single 'setup' lock so two apt processes never collide on the dpkg
-# lock. `tailscale up` blocks until the end user signs in, holding the lock.
-# Built fresh each time (not a module-level constant) so syncthing_cmd() picks
-# up the REAL admin account, which doesn't exist yet when this module loads.
+# The AUTOMATIC chain: only what the box needs to be a working NAS — web admin,
+# the browser terminal, and file sharing. Runs under the 'setup' lock so two apt
+# processes never collide on the dpkg lock.
+#
+# Syncthing and Tailscale are deliberately NOT here. They used to be, and it
+# made the box install two services nobody had asked for on the very first page
+# load: `tailscale up` then blocked holding the lock until the end user signed
+# into a Tailscale account they may not even have, and Syncthing came up bound
+# to 0.0.0.0 unprompted. Both are now strictly opt-in, one button each, on
+# their own locks so either can be installed without waiting for the other.
 def build_setup_cmd():
-    return "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD, syncthing_cmd(admin_username()),
-                       TAILSCALE_CMD, TS_UP_CMD])
+    return "; ".join([COCKPIT_CMD, TTYD_CMD, SAMBA_CMD])
+
+
+def build_syncthing_cmd():
+    return syncthing_cmd(admin_username())
+
+
+def build_tailscale_cmd():
+    return TAILSCALE_CMD
 
 
 @app.route("/")
 def index():
-    # First time this page is opened after setup (box is on stable home WiFi):
-    #  - Cockpit auto-installs in the background.
-    #  - Tailscale auto-installs, then auto-runs `tailscale up` to surface a
-    #    one-time sign-in link. The END USER clicks it and logs into THEIR OWN
-    #    Tailscale account — no auth key is baked into the box. Once they sign
-    #    in, this box appears in their tailnet.
+    # First time this page is opened after setup (box is on stable home WiFi),
+    # Cockpit + the browser terminal + Samba auto-install in the background.
+    # Syncthing and Tailscale do NOT — they are opt-in, one button each.
     pw_not_set = os.path.exists(PW_FLAG)
     cockpit = cockpit_state()
     tailscale = tailscale_state()
     syncthing = syncthing_state()
-    # Kick off the ordered install chain (Cockpit -> ttyd -> Tailscale) only
-    # AFTER the admin account exists. Starting it earlier turns on the 5s
-    # progress-refresh, which would wipe the account form while it's being typed.
-    done = cockpit == "ready" and tailscale == "up"
+    # Kick off the base chain only AFTER the admin account exists. Starting it
+    # earlier turns on the 5s progress-refresh, which would wipe the account
+    # form while it's being typed.
+    #
+    # `done` intentionally tracks Cockpit only. It used to also require
+    # tailscale == "up", which — now that Tailscale isn't in this chain — would
+    # never become true, so the base chain would relaunch on every single page
+    # load forever.
+    done = cockpit == "ready"
     if have_internet() and not pw_not_set and not done and not is_installing("setup"):
         start_install("setup", build_setup_cmd())
 
-    busy = is_installing("setup")
+    # Any of the three locks counts as busy, so the page keeps auto-refreshing
+    # while an opt-in install runs and its button flips to Open on its own.
+    busy = (is_installing("setup") or is_installing("syncthing")
+            or is_installing("tailscale"))
     # Once Samba is installed, seed the default shares (whole storage + tree).
     if samba_installed():
         ensure_default_shares()
@@ -1771,20 +1790,38 @@ def index():
 # Manual triggers (fallbacks) all funnel to the same ordered, serialized chain
 # so nothing ever runs two apt processes at once.
 @app.route("/install/cockpit", methods=["POST"])
-@app.route("/install/tailscale", methods=["POST"])
-@app.route("/install/syncthing", methods=["POST"])
-def install_apps():
+def install_cockpit():
     if not have_internet():
         return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
     start_install("setup", build_setup_cmd())
-    return redirect("/?msg=Installing apps… Cockpit, Syncthing, then Tailscale.")
+    return redirect("/?msg=Installing Cockpit…")
+
+
+# Syncthing and Tailscale each get their OWN lock, so one can be installed
+# while the other is untouched (and neither waits on the base 'setup' chain).
+@app.route("/install/syncthing", methods=["POST"])
+def install_syncthing():
+    if not have_internet():
+        return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
+    start_install("syncthing", build_syncthing_cmd())
+    return redirect("/?msg=Installing Syncthing… the button becomes Open when it's ready.")
+
+
+@app.route("/install/tailscale", methods=["POST"])
+def install_tailscale():
+    if not have_internet():
+        return redirect("/?cls=err&msg=No internet — connect to your home WiFi first.")
+    start_install("tailscale", build_tailscale_cmd())
+    return redirect("/?msg=Installing Tailscale… the button becomes Open when it's ready.")
 
 
 @app.route("/tailscale/up", methods=["POST"])
 def tailscale_up():
     if not shutil.which("tailscale"):
         return redirect("/?cls=err&msg=Install Tailscale first.")
-    start_install("setup", TS_UP_CMD)
+    # Own lock, not 'setup': `tailscale up` blocks until the user signs in, and
+    # on the shared lock that stalled every other install behind it.
+    start_install("tailscale", TS_UP_CMD)
     return redirect("/?msg=Starting Tailscale… a sign-in link will appear below.")
 
 
