@@ -39,7 +39,12 @@ if [ ! -f /etc/homenas/provisioned ]; then
 
 EOF
 else
-    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    # Not `hostname -I`: that lists Docker's bridge addresses too (docker0
+    # 172.17.0.1, br-<id> 172.18.0.1) in unstable order, so once a Docker
+    # stack (Immich) was on the box this banner started advertising 172.18.0.1
+    # as the box's IP -- unreachable from the LAN, and it looks like a fault.
+    ip="$(ip -4 -o addr show scope global 2>/dev/null \
+          | awk '$2 !~ /^(docker|br-|veth|tailscale|lo)/ {split($4,a,"/"); print a[1]; exit}')"
     ver="$(cat /etc/gmnas-build-version 2>/dev/null || echo '?')"
     cat > /etc/issue <<EOF
 ============================================================

@@ -53,7 +53,28 @@ saved_wifi() {
         | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' | grep -q .
 }
 
-if saved_wifi; then
+# An explicit request for setup mode (menu `h` / reset-setup.sh) overrides the
+# connectivity heuristic entirely. The heuristic is right for the case it was
+# written for -- a box that lost its network must always be able to fall back
+# to the AP -- but it is wrong when the user deliberately asked for the wizard:
+# any surviving WiFi profile would reconnect within the 60s grace window and
+# send us down "normal boot, no wizard", so the AP never appeared. Confirmed
+# live twice (2026-08-05, 2026-08-06).
+#
+# The marker is consumed here, so this is a one-shot: if the user never
+# completes the portal, the next boot behaves normally again rather than
+# trapping the box in AP mode forever.
+FORCE_FLAG=/etc/homenas/force-setup
+if [ -f "$FORCE_FLAG" ]; then
+    log "force-setup marker present -> setup AP requested explicitly, ignoring any saved WiFi"
+    rm -f "$FORCE_FLAG"
+    # Drop anything that could grab the radio out from under wifi-connect.
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' \
+        | while read -r c; do
+            [ -n "$c" ] && { nmcli connection delete "$c" 2>/dev/null && log "  deleted leftover WiFi profile: $c"; }
+          done
+elif saved_wifi; then
     # A home network is configured — give it up to ~60s to auto-connect before
     # falling back to the setup AP (tolerates brief router outages).
     log "saved WiFi found — waiting up to ~60s for it to connect..."
@@ -76,6 +97,17 @@ else
     log "no saved WiFi -> launching setup AP right away"
 fi
 log "devices: $(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null | tr '\n' ' ')"
+
+# Un-block the radio before anything else. A soft rfkill block (or NM's own
+# `nmcli radio wifi off` state) makes the wifi device vanish from `nmcli
+# device` entirely, which is indistinguishable from "no hardware" further
+# down -- and that path used to give up permanently. Cheap, idempotent, and
+# a no-op on a healthy box. Note rfkill itself may not be installed (the
+# diagnostics above log "rfkill not installed" on this image), so don't rely
+# on it alone.
+command -v rfkill >/dev/null 2>&1 && rfkill unblock wifi 2>/dev/null || true
+nmcli radio wifi on 2>/dev/null || true
+nmcli networking on 2>/dev/null || true
 
 log "NO active network after wait -> (re)running the first-time WiFi wizard"
 # Offline: treat the box as needing setup again so the welcome app (gated on

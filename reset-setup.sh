@@ -15,9 +15,37 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# This script disconnects the very network it is usually invoked over (the
+# console menu can be driven through ttyd in a browser, or over SSH). When that
+# happens the shell gets SIGHUP and the script dies PART-DONE -- confirmed live
+# 2026-08-06 07:26: the log stops right after "disconnected wlp1s0", so the
+# WiFi profile was never deleted and the box never rebooted, leaving it in
+# setup mode with no AP and no network at all. Re-exec detached from any
+# terminal so the rest always runs to completion.
+if [ "${GMNAS_DETACHED:-}" != "1" ]; then
+    export GMNAS_DETACHED=1
+    mkdir -p /var/log/gm-nas 2>/dev/null || true
+    echo "reset-setup: detaching so it survives the WiFi teardown; follow /var/log/gm-nas/reset-setup.log"
+    setsid nohup "$0" "$@" </dev/null >>/var/log/gm-nas/reset-setup.log 2>&1 &
+    exit 0
+fi
+
 log "=============== reset-setup start ==============="
 log "clearing provisioned flag"
 rm -f /etc/homenas/provisioned
+
+# Hard, explicit "the user asked for setup mode" marker, honoured by
+# firstboot-wifi.sh ahead of its own connectivity check.
+#
+# Without this, `h` was only ever *implicitly* requesting the AP: it deleted the
+# WiFi and trusted that firstboot would then find no network. Any single
+# leftover wireless profile (a stale netplan mirror, a duplicate NM connection,
+# a re-add racing the reboot) put firstboot straight back on "saved WiFi found
+# -> normal boot, no wizard" -- confirmed live twice. The intent is now stated
+# outright instead of inferred from the absence of something.
+mkdir -p /etc/homenas
+touch /etc/homenas/force-setup
+log "wrote /etc/homenas/force-setup — next boot goes to the AP regardless of saved WiFi"
 
 # Same reasoning as factory-reset.sh: whatever console autologin state
 # existed before this ran, force it OFF here too. The First-time wizard
@@ -67,12 +95,38 @@ nmcli -t -f NAME,TYPE connection show 2>/dev/null \
 # normal boot (mark provisioned), no wizard" and the GMNas-Setup AP never
 # appeared -- while the menu still showed "setup mode" from the cleared flag.
 # Never touches 01-gmnas-net.yaml (ethernet/usb-tether only, no wifis: key).
-for f in /etc/netplan/*-NM-*.yaml; do
+# Match on CONTENT (any file with a wifis: section), not on the 9x-NM-* name
+# pattern: the name is just NetworkManager's current convention, and anything
+# hand-written or renamed would slip through a glob while still restoring WiFi
+# on boot. 01-gmnas-net.yaml has no wifis: key (ethernet/usb-tether only), so
+# it is never touched.
+for f in /etc/netplan/*.yaml /etc/netplan/*.yml; do
     if [ -f "$f" ] && grep -q '^[[:space:]]*wifis:' "$f"; then
         rm -f "$f"
-        log "  removed stale netplan WiFi profile: $f"
+        log "  removed netplan WiFi profile: $f"
     fi
 done
+# NetworkManager's own keyfile store, in case a connection lives here rather
+# than in netplan (depends on which tool created it).
+for f in /etc/NetworkManager/system-connections/*; do
+    if [ -f "$f" ] && grep -qi '^type=wifi\|802-11-wireless' "$f"; then
+        rm -f "$f"
+        log "  removed NM keyfile WiFi profile: $f"
+    fi
+done
+netplan generate 2>/dev/null || true
+nmcli connection reload 2>/dev/null || true
+
+# Verify, don't assume. Every previous failure here was the script believing it
+# had forgotten the network when it hadn't.
+remaining="$(nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+    | awk -F: '$2 ~ /wireless/ && $1 !~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' | tr '\n' ',')"
+if [ -n "$remaining" ]; then
+    log "WARNING: wireless profiles still present after cleanup: [$remaining]"
+    log "  (force-setup marker is set, so the AP will still be raised on boot)"
+else
+    log "verified: no saved wireless profiles remain"
+fi
 # The flag was cleared at the top, but NM may have re-marked the box
 # provisioned in between (see above) -- clear it again, now that nothing can
 # bring the old network back.

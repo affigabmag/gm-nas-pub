@@ -236,21 +236,22 @@ PAGE = """<!doctype html>
   <!-- Immich: photos/videos. Installed outside this app (Docker stack), so
        there is no Install button -- only a probed state and the links. -->
   <div class="app">
-   <span class="name">Photos</span>
+   <span class="name">Videos / Photos</span>
    <span class="grow"><span class="desc">Immich — your photos &amp; videos, private</span></span>
-   {% if immich == 'ready' %}
-   <a class="linkbtn svclink" data-proto="http" data-port="{{ immich_port }}"
-      href="http://{{ host }}:{{ immich_port }}" target="_blank">Open ↗</a>
-   {% else %}<span class="badge b-busy">Starting…</span>
-   {% endif %}
+   {% if immich != 'ready' %}<span class="badge b-busy">Starting…</span>{% endif %}
   </div>
   {% if immich == 'ready' %}
-  <p class="hint">At home, open <b>Photos</b> above.
-   {% if immich_url %}Away from home, use <b>{{ immich_url }}</b> — works on mobile data,
-   anywhere.{% endif %}</p>
-  {% if immich_url %}
-  <a class="linkbtn" href="{{ immich_url }}" target="_blank">Open Photos from anywhere ↗</a>
-  {% endif %}
+  <!-- Both entry points on ONE row, each labelled by WHERE it works rather
+       than by what it does -- "Open" twice told the user nothing about which
+       link to use from where. Wraps to two lines on narrow phones. -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px">
+   <a class="linkbtn svclink" style="flex:1 1 40%;margin:0" data-proto="http" data-port="{{ immich_port }}"
+      href="http://{{ host }}:{{ immich_port }}" target="_blank">Home / Local ↗</a>
+   {% if immich_host %}
+   <a class="linkbtn" style="flex:1 1 40%;margin:0"
+      href="{{ immich_url }}" target="_blank">Anywhere / {{ immich_host }} ↗</a>
+   {% endif %}
+  </div>
   <div class="links" style="align-items:center;gap:14px">
    <div>
     <a href="https://play.google.com/store/apps/details?id=app.alextran.immich" target="_blank"
@@ -267,10 +268,6 @@ PAGE = """<!doctype html>
     <p class="hint" style="text-align:center;margin-top:4px">iPhone: <b>Immich</b></p>
    </div>
   </div>
-  <p class="hint">In the phone app, the <b>Server Endpoint URL</b> is
-   {% if immich_url %}<b>{{ immich_url }}/api</b> (use this one — it keeps working away
-   from home){% else %}<b>http://{{ ip or host }}:{{ immich_port }}/api</b>{% endif %}.
-   Sign in with the account you create on that page.</p>
   {% endif %}
   <!-- Tailscale: on-demand install, then connect for a login link -->
   <div class="app">
@@ -385,7 +382,23 @@ PAGE = """<!doctype html>
   </div>
  </div>
 
- <div class="card"><h2>File shares</h2>
+ <!-- File shares: collapsed to a single row like Terminal/Cockpit, because the
+      default shares are already created and working -- the average user never
+      needs this panel at all, and a folder picker + a New-subfolder field +
+      the share list was the tallest thing on the page by far. Expanded only on
+      tap. -->
+ <div class="card">
+  <div class="app">
+   <span class="name">File shares</span>
+   <span class="grow"><span class="desc">
+    {%- if shares %}{{ shares|length }} folder{{ 's' if shares|length != 1 }} shared with your phone/PC
+    {%- else %}Share folders with your phone/PC (Samba){% endif %}</span></span>
+   <button type="button" id="sharesToggle" aria-expanded="false" aria-controls="sharesBody"
+           style="width:auto;margin:0;padding:10px 16px;font-size:13px;border-radius:8px;font-weight:700">Open</button>
+  </div>
+  <!-- Auto-expanded when a share was just created/removed, so the result of
+       the action is visible instead of collapsing out of sight. -->
+  <div id="sharesBody" style="display:none">
   {% if not samba %}<p class="hint">Setting up file sharing… shares appear once Samba finishes installing.</p>{% endif %}
   <form method="post" action="/share">
    <label>Folder</label>
@@ -415,6 +428,25 @@ PAGE = """<!doctype html>
     <p class="hint">No shares yet.</p>
   {% endfor %}
   </div>
+  </div>
+  <script>
+   (function(){
+     var btn = document.getElementById('sharesToggle'),
+         body = document.getElementById('sharesBody');
+     if (!btn || !body) return;
+     function set(open){
+       body.style.display = open ? 'block' : 'none';
+       btn.textContent = open ? 'Close' : 'Open';
+       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+     }
+     btn.addEventListener('click', function(){
+       set(body.style.display === 'none');
+     });
+     // A share was just created or removed -- show the panel so the user sees
+     // the outcome rather than a card that collapsed on redirect.
+     if (/share/i.test(decodeURIComponent(location.search))) set(true);
+   })();
+  </script>
  </div>
 
 
@@ -1240,6 +1272,12 @@ def immich_public_url():
     return url
 
 
+def immich_public_host():
+    """Just the hostname part -- the button is labelled with the bare
+    host+domain ("Anywhere / liran.flash-jet.com"), not the full URL."""
+    return re.sub(r"^https?://", "", immich_public_url())
+
+
 def syncthing_device_id(user):
     """The box's Syncthing Device ID, without needing the GUI/login at all --
     `syncthing --device-id` derives it straight from the cert on disk (no
@@ -1779,6 +1817,7 @@ def index():
         hostbase=suggested_hostname(),
         cockpit=cockpit, tailscale=tailscale, syncthing=syncthing,
         immich=immich_state(), immich_port=IMMICH_PORT, immich_url=immich_public_url(),
+        immich_host=immich_public_host(),
         syncthing_device_id=(syncthing_device_id(admin_username()) if syncthing == "ready" else ""),
         qr_cache_bust=int(time.time()),
         ts_login_url=(tailscale_login_url() if tailscale == "ready" else None),

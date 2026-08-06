@@ -20,7 +20,15 @@ else
 fi
 
 H() { hostname 2>/dev/null; }
-IP() { hostname -I 2>/dev/null | awk '{print $1}'; }
+# Real LAN/AP address only. `hostname -I` returns EVERY address including
+# Docker's bridges (docker0 172.17.0.1, br-<id> 172.18.0.1), and its order is
+# not stable -- once Immich's Docker stack was installed, the menu header and
+# /etc/issue started showing 172.18.0.1 instead of the box's actual IP, which
+# reads as "the network is broken" to anyone looking at the screen.
+IP() {
+    ip -4 -o addr show scope global 2>/dev/null \
+        | awk '$2 !~ /^(docker|br-|veth|tailscale|lo)/ {split($4,a,"/"); print a[1]; exit}'
+}
 pause() { echo; read -rp "Press Enter to continue…" _; }
 # Robust "is the box online?" check. Does NOT rely on ICMP alone (many routers
 # block ping to 8.8.8.8): tries ping, then a TCP connect to public DNS/HTTPS.
@@ -144,7 +152,7 @@ act_e() {
 act_x() {
     echo "Checking internet…"; echo
     local ipaddr gw
-    ipaddr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    ipaddr="$(IP)"   # not `hostname -I`: skips Docker bridges (see IP())
     gw="$(ip route 2>/dev/null | awk '/^default/{print $3; exit}')"
     echo " This box IP : ${ipaddr:-<none>}"
     echo " Interfaces  : $(ip -brief link 2>/dev/null | awk '$1!="lo"{printf "%s(%s) ",$1,$2}')"
