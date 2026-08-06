@@ -100,8 +100,17 @@ nmcli -t -f NAME,TYPE connection show 2>/dev/null \
 # hand-written or renamed would slip through a glob while still restoring WiFi
 # on boot. 01-gmnas-net.yaml has no wifis: key (ethernet/usb-tether only), so
 # it is never touched.
+# Back the profiles up before deleting them. If the user starts the wizard and
+# then walks away, firstboot's ~20min portal wait used to expire leaving the box
+# with NO network at all and no way back in short of a keyboard -- the WiFi it
+# knew had been deleted. With a backup, firstboot can put the box back exactly
+# where it was and reboot. Makes `h` safe to try, and safe to abandon.
+BACKUP_DIR=/etc/homenas/wifi-backup
+rm -rf "$BACKUP_DIR"; mkdir -p "$BACKUP_DIR"
+
 for f in /etc/netplan/*.yaml /etc/netplan/*.yml; do
     if [ -f "$f" ] && grep -q '^[[:space:]]*wifis:' "$f"; then
+        cp -a "$f" "$BACKUP_DIR/" 2>/dev/null && log "  backed up $f"
         rm -f "$f"
         log "  removed netplan WiFi profile: $f"
     fi

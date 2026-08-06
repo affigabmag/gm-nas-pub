@@ -357,6 +357,10 @@ for _ in $(seq 1 600); do
             fi
         done
         mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+        # The user picked a network, so the pre-wizard backup is obsolete --
+        # drop it, or a later abandoned wizard would restore the OLD network
+        # instead of this one.
+        rm -rf /etc/homenas/wifi-backup
         bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
         log "provisioned -> rebooting now (clean client join)"
         sleep 2
@@ -381,5 +385,41 @@ if nmcli -t -f STATE g 2>/dev/null | grep -q '^connected$'; then
     systemctl reboot
     exit 0
 fi
+# Nobody completed the portal. Don't leave the box stranded: reset-setup.sh
+# backed up the WiFi it deleted, so put it back and reboot into the network the
+# box was on before the wizard started. Without this, abandoning the wizard left
+# a headless box with no network and no route back in except a keyboard.
+BACKUP_DIR=/etc/homenas/wifi-backup
+if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+    log "portal not completed -> restoring the previous WiFi from $BACKUP_DIR"
+    kill "$WC_PID" 2>/dev/null || true
+    sleep 2
+    # Drop the setup-AP profile first so it can't win the radio on reboot.
+    nmcli -t -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 ~ /wireless/ && $1 ~ /GMNas-Setup|Hotspot|wifi-connect/ {print $1}' \
+        | while read -r ap; do
+            [ -n "$ap" ] && nmcli connection delete "$ap" 2>/dev/null || true
+          done
+    for f in "$BACKUP_DIR"/*; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            *.yaml|*.yml) cp -a "$f" /etc/netplan/ && log "  restored $(basename "$f") to /etc/netplan" ;;
+            *)            mkdir -p /etc/NetworkManager/system-connections
+                          cp -a "$f" /etc/NetworkManager/system-connections/ \
+                              && log "  restored $(basename "$f") to NM keyfiles" ;;
+        esac
+    done
+    chmod 600 /etc/netplan/*.yaml 2>/dev/null || true
+    rm -rf "$BACKUP_DIR"
+    netplan generate 2>/dev/null || true
+    nmcli connection reload 2>/dev/null || true
+    mkdir -p "$(dirname "$FLAG")"; touch "$FLAG"
+    bash /usr/local/sbin/update-issue.sh 2>/dev/null || true
+    log "previous WiFi restored -> rebooting back onto it"
+    sleep 2
+    systemctl reboot
+    exit 0
+fi
+
 log "firstboot-wifi finished without provisioning (exit 0)"
 exit 0
